@@ -127,19 +127,53 @@ function readTheme(): ThemeMode {
   return stored === "daylight" ? "daylight" : "night";
 }
 
+function cardClass() {
+  return "rounded-[22px] border border-[var(--border)] bg-[var(--card)] p-5";
+}
+
+function softCardClass() {
+  return "rounded-2xl border border-[var(--border)] bg-[var(--card-subtle)] p-4";
+}
+
+function inputClass() {
+  return "w-full rounded-2xl border border-[var(--border)] bg-[var(--background-elevated)] px-4 py-3 text-[var(--foreground)] outline-none placeholder:text-[var(--foreground-faint)] focus:border-[var(--border-active)] disabled:opacity-60";
+}
+
+function inputDisabledClass() {
+  return "w-full rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 py-3 text-[var(--foreground-muted)] outline-none";
+}
+
+function actionGhostClass() {
+  return "rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 py-2.5 text-sm font-medium text-[var(--foreground)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)] disabled:cursor-not-allowed disabled:opacity-50";
+}
+
+function actionPrimaryClass() {
+  return "rounded-2xl border border-[var(--border)] bg-[var(--foreground)] px-4 py-2.5 text-sm font-semibold text-[var(--background)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50";
+}
+
+function actionDangerClass() {
+  return "rounded-2xl border border-red-400/20 bg-red-400/10 px-4 py-2.5 text-sm font-medium text-red-200 transition hover:bg-red-400/15 disabled:cursor-not-allowed disabled:opacity-50";
+}
+
+function subtlePillClass() {
+  return "rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--foreground-muted)]";
+}
+
 function AppearanceCard() {
   const [mounted, setMounted] = useState(false);
   const [theme, setTheme] = useState<ThemeMode>(() => readTheme());
 
   useEffect(() => {
     applyTheme(theme);
+  }, [theme]);
 
+  useEffect(() => {
     const timeout = window.setTimeout(() => {
       setMounted(true);
     }, 0);
 
     return () => window.clearTimeout(timeout);
-  }, [theme]);
+  }, []);
 
   const changeTheme = (nextTheme: ThemeMode) => {
     setTheme(nextTheme);
@@ -149,12 +183,12 @@ function AppearanceCard() {
     <SectionCard
       title="Appearance"
       subtitle="Control workspace theme from one place"
-      className="bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.03))]"
+      className="bg-[var(--background-panel)]"
     >
       <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
-        <div className="rounded-[22px] border border-white/10 bg-white/5 p-5">
-          <div className="text-sm font-semibold text-white">Theme mode</div>
-          <div className="mt-2 text-sm leading-7 text-white/55">
+        <div className={cardClass()}>
+          <div className="text-sm font-semibold text-[var(--foreground)]">Theme mode</div>
+          <div className="mt-2 text-sm leading-7 text-[var(--foreground-muted)]">
             Daylight is better for bright environments. Night keeps the interface lower glare and more focused.
           </div>
 
@@ -164,10 +198,10 @@ function AppearanceCard() {
               onClick={() => changeTheme("daylight")}
               disabled={!mounted}
               className={[
-                "inline-flex h-11 items-center justify-center rounded-full border px-5 text-sm font-semibold transition disabled:opacity-60",
+                "inline-flex h-11 items-center justify-center rounded-full border px-5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60",
                 theme === "daylight"
-                  ? "border-[#6d5efc]/30 bg-white text-[#07090D]"
-                  : "border-white/12 bg-white/6 text-white hover:bg-white/10",
+                  ? "border-[var(--border-active)] bg-[var(--foreground)] text-[var(--background)]"
+                  : "border-[var(--border)] bg-[var(--button-secondary-bg)] text-[var(--foreground)] hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]",
               ].join(" ")}
             >
               Daylight
@@ -178,10 +212,10 @@ function AppearanceCard() {
               onClick={() => changeTheme("night")}
               disabled={!mounted}
               className={[
-                "inline-flex h-11 items-center justify-center rounded-full border px-5 text-sm font-semibold transition disabled:opacity-60",
+                "inline-flex h-11 items-center justify-center rounded-full border px-5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60",
                 theme === "night"
-                  ? "border-[#6d5efc]/30 bg-white text-[#07090D]"
-                  : "border-white/12 bg-white/6 text-white hover:bg-white/10",
+                  ? "border-[var(--border-active)] bg-[var(--foreground)] text-[var(--background)]"
+                  : "border-[var(--border)] bg-[var(--button-secondary-bg)] text-[var(--foreground)] hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]",
               ].join(" ")}
             >
               Night
@@ -189,12 +223,12 @@ function AppearanceCard() {
           </div>
         </div>
 
-        <div className="rounded-[22px] border border-white/10 bg-white/5 p-5">
-          <div className="text-sm font-semibold text-white">Current preference</div>
+        <div className={cardClass()}>
+          <div className="text-sm font-semibold text-[var(--foreground)]">Current preference</div>
           <div className="mt-4 flex items-center gap-3">
             <StatusBadge tone="info">{theme === "night" ? "Night mode" : "Daylight mode"}</StatusBadge>
           </div>
-          <div className="mt-4 text-sm leading-7 text-white/55">
+          <div className="mt-4 text-sm leading-7 text-[var(--foreground-muted)]">
             The theme switch was removed from the sidebar and homepage. Settings is now the only place that controls it.
           </div>
         </div>
@@ -208,34 +242,34 @@ function WorkspaceSetupCard({ slug }: { slug: string }) {
     <SectionCard
       title="Workspace Setup"
       subtitle="Access onboarding from settings instead of the sidebar"
-      className="bg-[linear-gradient(180deg,rgba(124,58,237,0.12),rgba(255,255,255,0.03))]"
+      className="bg-[var(--background-panel)]"
     >
       <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-        <div className="rounded-[22px] border border-white/10 bg-white/5 p-5">
-          <div className="text-base font-bold text-white">Onboarding management</div>
-          <div className="mt-2 text-sm leading-7 text-white/55">
+        <div className={cardClass()}>
+          <div className="text-base font-bold text-[var(--foreground)]">Onboarding management</div>
+          <div className="mt-2 text-sm leading-7 text-[var(--foreground-muted)]">
             Update the original company setup, strategy, department heads, and seeded KPI layer from the onboarding flow.
           </div>
 
           <div className="mt-5 flex flex-wrap gap-3">
             <Link
               href={`/o/${encodeURIComponent(slug)}/onboarding`}
-              className="inline-flex h-11 items-center justify-center rounded-full bg-white px-5 text-sm font-semibold text-[#07090D] transition hover:bg-white/92"
+              className="inline-flex h-11 items-center justify-center rounded-full bg-[var(--foreground)] px-5 text-sm font-semibold text-[var(--background)] transition hover:opacity-90"
             >
               Open onboarding
             </Link>
 
             <Link
               href={`/o/${encodeURIComponent(slug)}/dashboard`}
-              className="inline-flex h-11 items-center justify-center rounded-full border border-white/12 bg-white/6 px-5 text-sm font-medium text-white transition hover:bg-white/10"
+              className="inline-flex h-11 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-5 text-sm font-medium text-[var(--foreground)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
             >
               Back to dashboard
             </Link>
           </div>
         </div>
 
-        <div className="rounded-[22px] border border-white/10 bg-white/5 p-5">
-          <div className="text-sm font-semibold text-white">What changed</div>
+        <div className={cardClass()}>
+          <div className="text-sm font-semibold text-[var(--foreground)]">What changed</div>
           <div className="mt-4 grid gap-3">
             <MiniSettingItem
               title="Theme toggle moved"
@@ -258,9 +292,9 @@ function WorkspaceSetupCard({ slug }: { slug: string }) {
 
 function MiniSettingItem({ title, desc }: { title: string; desc: string }) {
   return (
-    <div className="rounded-[18px] border border-white/8 bg-black/20 p-3">
-      <div className="text-sm font-semibold text-white">{title}</div>
-      <div className="mt-1 text-sm leading-6 text-white/55">{desc}</div>
+    <div className="rounded-[18px] border border-[var(--border)] bg-[var(--card-subtle)] p-3">
+      <div className="text-sm font-semibold text-[var(--foreground)]">{title}</div>
+      <div className="mt-1 text-sm leading-6 text-[var(--foreground-muted)]">{desc}</div>
     </div>
   );
 }
@@ -653,7 +687,7 @@ export default function SettingsPage() {
             <button
               type="button"
               onClick={() => void load()}
-              className="rounded-2xl border border-white/12 bg-white/6 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/10"
+              className={actionGhostClass()}
             >
               Refresh
             </button>
@@ -662,13 +696,13 @@ export default function SettingsPage() {
       />
 
       {msg ? (
-        <div className="mb-6 rounded-[20px] border border-red-400/20 bg-red-400/8 px-5 py-4 text-sm text-red-100">
+        <div className="mb-6 rounded-[20px] border border-red-400/20 bg-red-400/10 px-5 py-4 text-sm text-red-200">
           {msg}
         </div>
       ) : null}
 
       {success ? (
-        <div className="mb-6 rounded-[20px] border border-emerald-400/20 bg-emerald-400/8 px-5 py-4 text-sm text-emerald-100">
+        <div className="mb-6 rounded-[20px] border border-emerald-400/20 bg-emerald-400/10 px-5 py-4 text-sm text-emerald-200">
           {success}
         </div>
       ) : null}
@@ -677,29 +711,29 @@ export default function SettingsPage() {
         <SectionCard title="Organization settings" subtitle="Core workspace identity and admin-managed configuration.">
           {loading ? (
             <div className="space-y-4">
-              <div className="h-24 animate-pulse rounded-[20px] border border-white/10 bg-white/5" />
-              <div className="h-24 animate-pulse rounded-[20px] border border-white/10 bg-white/5" />
+              <div className="h-24 animate-pulse rounded-[20px] border border-[var(--border)] bg-[var(--card)]" />
+              <div className="h-24 animate-pulse rounded-[20px] border border-[var(--border)] bg-[var(--card)]" />
             </div>
           ) : (
             <div className="space-y-5">
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-white/80">Organization name</label>
+                  <label className="mb-2 block text-sm font-medium text-[var(--foreground-soft)]">Organization name</label>
                   <input
                     value={orgName}
                     onChange={(e) => setOrgName(e.target.value)}
                     disabled={!member?.permissions?.canManageOrg || savingOrg}
-                    className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/25 focus:border-white/20 disabled:opacity-60"
+                    className={inputClass()}
                     placeholder="Enter organization name"
                   />
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-white/80">Organization slug</label>
+                  <label className="mb-2 block text-sm font-medium text-[var(--foreground-soft)]">Organization slug</label>
                   <input
                     value={org?.slug ?? ""}
                     disabled
-                    className="w-full rounded-2xl border border-white/10 bg-black/10 px-4 py-3 text-white/55 outline-none"
+                    className={inputDisabledClass()}
                   />
                 </div>
               </div>
@@ -709,26 +743,26 @@ export default function SettingsPage() {
                   type="button"
                   onClick={() => void handleSaveOrganization()}
                   disabled={!member?.permissions?.canManageOrg || savingOrg || !orgName.trim()}
-                  className="rounded-2xl border border-white/12 bg-white px-4 py-2.5 text-sm font-semibold text-black transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                  className={actionPrimaryClass()}
                 >
                   {savingOrg ? "Saving..." : "Save changes"}
                 </button>
               </div>
 
               <div className="grid gap-3 md:grid-cols-3">
-                <div className="rounded-2xl border border-white/8 bg-black/15 p-4">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/38">Departments</div>
-                  <div className="mt-2 text-2xl font-black text-white">{workspace?.departments ?? 0}</div>
+                <div className={softCardClass()}>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-faint)]">Departments</div>
+                  <div className="mt-2 text-2xl font-black text-[var(--foreground)]">{workspace?.departments ?? 0}</div>
                 </div>
 
-                <div className="rounded-2xl border border-white/8 bg-black/15 p-4">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/38">KPIs</div>
-                  <div className="mt-2 text-2xl font-black text-white">{workspace?.kpis ?? 0}</div>
+                <div className={softCardClass()}>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-faint)]">KPIs</div>
+                  <div className="mt-2 text-2xl font-black text-[var(--foreground)]">{workspace?.kpis ?? 0}</div>
                 </div>
 
-                <div className="rounded-2xl border border-white/8 bg-black/15 p-4">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/38">Objectives</div>
-                  <div className="mt-2 text-2xl font-black text-white">{workspace?.objectives ?? 0}</div>
+                <div className={softCardClass()}>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-faint)]">Objectives</div>
+                  <div className="mt-2 text-2xl font-black text-[var(--foreground)]">{workspace?.objectives ?? 0}</div>
                 </div>
               </div>
             </div>
@@ -737,35 +771,35 @@ export default function SettingsPage() {
 
         <SectionCard title="Account" subtitle="Current signed-in user and workspace access level.">
           {loading ? (
-            <div className="h-52 animate-pulse rounded-[20px] border border-white/10 bg-white/5" />
+            <div className="h-52 animate-pulse rounded-[20px] border border-[var(--border)] bg-[var(--card)]" />
           ) : (
             <div className="space-y-5">
-              <div className="flex items-center gap-4 rounded-[22px] border border-white/10 bg-white/5 p-4">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-black/20 text-lg font-black text-white">
+              <div className="flex items-center gap-4 rounded-[22px] border border-[var(--border)] bg-[var(--card)] p-4">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--background-elevated)] text-lg font-black text-[var(--foreground)]">
                   {initials}
                 </div>
                 <div className="min-w-0">
-                  <div className="truncate text-base font-bold text-white">{sessionEmail ?? "Signed-in user"}</div>
-                  <div className="mt-1 text-sm text-white/45">Workspace member</div>
+                  <div className="truncate text-base font-bold text-[var(--foreground)]">{sessionEmail ?? "Signed-in user"}</div>
+                  <div className="mt-1 text-sm text-[var(--foreground-muted)]">Workspace member</div>
                 </div>
               </div>
 
               <div className="space-y-3">
-                <div className="rounded-2xl border border-white/8 bg-black/15 p-4">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/38">Email</div>
-                  <div className="mt-2 text-sm font-medium text-white">{member?.email ?? sessionEmail ?? "—"}</div>
+                <div className={softCardClass()}>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-faint)]">Email</div>
+                  <div className="mt-2 text-sm font-medium text-[var(--foreground)]">{member?.email ?? sessionEmail ?? "—"}</div>
                 </div>
 
-                <div className="rounded-2xl border border-white/8 bg-black/15 p-4">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/38">Role</div>
+                <div className={softCardClass()}>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-faint)]">Role</div>
                   <div className="mt-2 flex items-center gap-2">
                     <StatusBadge tone={roleTone(member?.role)}>{prettyRole(member?.role)}</StatusBadge>
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-white/8 bg-black/15 p-4">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/38">Active cycle</div>
-                  <div className="mt-2 text-sm font-medium text-white">{cycleLabel(workspace?.activeCycle)}</div>
+                <div className={softCardClass()}>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-faint)]">Active cycle</div>
+                  <div className="mt-2 text-sm font-medium text-[var(--foreground)]">{cycleLabel(workspace?.activeCycle)}</div>
                 </div>
               </div>
             </div>
@@ -782,39 +816,39 @@ export default function SettingsPage() {
         <SectionCard title="Members" subtitle="Owner-only invites, role changes, removal, and department assignment.">
           {loading ? (
             <div className="space-y-4">
-              <div className="h-28 animate-pulse rounded-[20px] border border-white/10 bg-white/5" />
-              <div className="h-56 animate-pulse rounded-[20px] border border-white/10 bg-white/5" />
+              <div className="h-28 animate-pulse rounded-[20px] border border-[var(--border)] bg-[var(--card)]" />
+              <div className="h-56 animate-pulse rounded-[20px] border border-[var(--border)] bg-[var(--card)]" />
             </div>
           ) : (
             <div className="space-y-5">
-              <div className="rounded-[22px] border border-white/10 bg-white/5 p-4">
-                <div className="text-base font-bold text-white">Add member</div>
-                <div className="mt-1 text-sm text-white/50">
+              <div className={cardClass()}>
+                <div className="text-base font-bold text-[var(--foreground)]">Add member</div>
+                <div className="mt-1 text-sm text-[var(--foreground-muted)]">
                   Department Head and Employee must be assigned to a department at creation time.
                 </div>
 
                 <div className="mt-4 grid gap-4 md:grid-cols-2">
                   <div>
-                    <label className="mb-2 block text-sm font-medium text-white/80">Email</label>
+                    <label className="mb-2 block text-sm font-medium text-[var(--foreground-soft)]">Email</label>
                     <input
                       value={inviteEmail}
                       onChange={(e) => setInviteEmail(e.target.value)}
                       placeholder="name@company.com"
                       disabled={!member?.permissions?.canInviteMembers || inviting}
-                      className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/25 focus:border-white/20 disabled:opacity-60"
+                      className={inputClass()}
                     />
                   </div>
 
                   <div>
-                    <label className="mb-2 block text-sm font-medium text-white/80">Role</label>
+                    <label className="mb-2 block text-sm font-medium text-[var(--foreground-soft)]">Role</label>
                     <select
                       value={inviteRole}
                       onChange={(e) => setInviteRole(e.target.value as Exclude<Role, "owner">)}
                       disabled={!member?.permissions?.canInviteMembers || inviting}
-                      className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-white/20 disabled:opacity-60"
+                      className={inputClass()}
                     >
                       {INVITABLE_ROLES.map((option) => (
-                        <option key={option.value} value={option.value} className="bg-[#111]">
+                        <option key={option.value} value={option.value} className="bg-[var(--background)] text-[var(--foreground)]">
                           {option.label}
                         </option>
                       ))}
@@ -824,18 +858,18 @@ export default function SettingsPage() {
 
                 {roleSupportsDepartment(inviteRole) ? (
                   <div className="mt-4">
-                    <label className="mb-2 block text-sm font-medium text-white/80">Department</label>
+                    <label className="mb-2 block text-sm font-medium text-[var(--foreground-soft)]">Department</label>
                     <select
                       value={inviteDepartmentId}
                       onChange={(e) => setInviteDepartmentId(e.target.value)}
                       disabled={!member?.permissions?.canInviteMembers || inviting}
-                      className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-white/20 disabled:opacity-60"
+                      className={inputClass()}
                     >
-                      <option value="" className="bg-[#111]">
+                      <option value="" className="bg-[var(--background)] text-[var(--foreground)]">
                         Select department
                       </option>
                       {departments.map((dept) => (
-                        <option key={dept.id} value={dept.id} className="bg-[#111]">
+                        <option key={dept.id} value={dept.id} className="bg-[var(--background)] text-[var(--foreground)]">
                           {dept.name}
                         </option>
                       ))}
@@ -848,16 +882,16 @@ export default function SettingsPage() {
                     type="button"
                     onClick={() => void handleInviteMember()}
                     disabled={!member?.permissions?.canInviteMembers || inviting || !inviteEmail.trim()}
-                    className="rounded-2xl border border-white/12 bg-white px-4 py-2.5 text-sm font-semibold text-black transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                    className={actionPrimaryClass()}
                   >
                     {inviting ? "Adding..." : "Add member"}
                   </button>
                 </div>
               </div>
 
-              <div className="rounded-[22px] border border-white/10 bg-white/5 p-4">
-                <div className="text-base font-bold text-white">Current members</div>
-                <div className="mt-1 text-sm text-white/50">
+              <div className={cardClass()}>
+                <div className="text-base font-bold text-[var(--foreground)]">Current members</div>
+                <div className="mt-1 text-sm text-[var(--foreground-muted)]">
                   After changing someone to Department Head or Employee, click Assign department.
                 </div>
 
@@ -873,26 +907,26 @@ export default function SettingsPage() {
                       return (
                         <div
                           key={item.userId}
-                          className="rounded-2xl border border-white/8 bg-black/15 px-4 py-4"
+                          className="rounded-2xl border border-[var(--border)] bg-[var(--card-subtle)] px-4 py-4"
                         >
                           <div className="flex flex-col gap-4">
                             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                               <div className="min-w-0">
-                                <div className="truncate text-sm font-semibold text-white">
+                                <div className="truncate text-sm font-semibold text-[var(--foreground)]">
                                   {item.email ?? item.userId}
                                 </div>
-                                <div className="mt-1 text-xs text-white/35">{item.userId}</div>
+                                <div className="mt-1 text-xs text-[var(--foreground-faint)]">{item.userId}</div>
                                 <div className="mt-2 flex flex-wrap items-center gap-2">
                                   <StatusBadge tone={roleTone(item.role)}>{prettyRole(item.role)}</StatusBadge>
 
                                   {supportsDepartment ? (
-                                    <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/55">
+                                    <span className={subtlePillClass()}>
                                       {item.departmentName ?? "No department"}
                                     </span>
                                   ) : null}
 
                                   {isSelf ? (
-                                    <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/50">
+                                    <span className={subtlePillClass()}>
                                       You
                                     </span>
                                   ) : null}
@@ -905,7 +939,7 @@ export default function SettingsPage() {
                                     type="button"
                                     onClick={() => handleStartRoleEdit(item.userId, item.role)}
                                     disabled={!member?.permissions?.canInviteMembers}
-                                    className="rounded-2xl border border-white/12 bg-white/6 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                                    className={actionGhostClass()}
                                   >
                                     Change role
                                   </button>
@@ -916,7 +950,7 @@ export default function SettingsPage() {
                                     type="button"
                                     onClick={() => handleStartDepartmentAssign(item.userId, item.departmentId)}
                                     disabled={!member?.permissions?.canInviteMembers}
-                                    className="rounded-2xl border border-white/12 bg-white/6 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                                    className={actionGhostClass()}
                                   >
                                     Assign department
                                   </button>
@@ -931,7 +965,7 @@ export default function SettingsPage() {
                                     isOwner ||
                                     isSelf
                                   }
-                                  className="rounded-2xl border border-red-400/20 bg-red-400/8 px-4 py-2.5 text-sm font-medium text-red-100 transition hover:bg-red-400/12 disabled:cursor-not-allowed disabled:opacity-50"
+                                  className={actionDangerClass()}
                                 >
                                   {removingMemberId === item.userId ? "Removing..." : "Remove"}
                                 </button>
@@ -939,15 +973,15 @@ export default function SettingsPage() {
                             </div>
 
                             {isEditingRole ? (
-                              <div className="flex flex-col gap-3 rounded-2xl border border-white/8 bg-black/20 p-4 sm:flex-row">
+                              <div className="flex flex-col gap-3 rounded-2xl border border-[var(--border)] bg-[var(--background-elevated)] p-4 sm:flex-row">
                                 <select
                                   value={editingRole}
                                   onChange={(e) => setEditingRole(e.target.value as Exclude<Role, "owner">)}
                                   disabled={updatingMemberId === item.userId}
-                                  className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-white/20"
+                                  className={inputClass()}
                                 >
                                   {INVITABLE_ROLES.map((option) => (
-                                    <option key={option.value} value={option.value} className="bg-[#111]">
+                                    <option key={option.value} value={option.value} className="bg-[var(--background)] text-[var(--foreground)]">
                                       {option.label}
                                     </option>
                                   ))}
@@ -958,7 +992,7 @@ export default function SettingsPage() {
                                     type="button"
                                     onClick={() => void handleChangeRole(item.userId)}
                                     disabled={updatingMemberId === item.userId}
-                                    className="rounded-2xl border border-white/12 bg-white px-4 py-2.5 text-sm font-semibold text-black transition hover:opacity-90 disabled:opacity-50"
+                                    className={actionPrimaryClass()}
                                   >
                                     {updatingMemberId === item.userId ? "Saving..." : "Save"}
                                   </button>
@@ -967,7 +1001,7 @@ export default function SettingsPage() {
                                     type="button"
                                     onClick={() => setEditingMemberId(null)}
                                     disabled={updatingMemberId === item.userId}
-                                    className="rounded-2xl border border-white/12 bg-white/6 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-white/10 disabled:opacity-50"
+                                    className={actionGhostClass()}
                                   >
                                     Cancel
                                   </button>
@@ -976,18 +1010,18 @@ export default function SettingsPage() {
                             ) : null}
 
                             {isAssigningDept && supportsDepartment ? (
-                              <div className="flex flex-col gap-3 rounded-2xl border border-white/8 bg-black/20 p-4 sm:flex-row">
+                              <div className="flex flex-col gap-3 rounded-2xl border border-[var(--border)] bg-[var(--background-elevated)] p-4 sm:flex-row">
                                 <select
                                   value={assignDepartmentId}
                                   onChange={(e) => setAssignDepartmentId(e.target.value)}
                                   disabled={updatingMemberId === item.userId}
-                                  className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-white/20"
+                                  className={inputClass()}
                                 >
-                                  <option value="" className="bg-[#111]">
+                                  <option value="" className="bg-[var(--background)] text-[var(--foreground)]">
                                     Select department
                                   </option>
                                   {departments.map((dept) => (
-                                    <option key={dept.id} value={dept.id} className="bg-[#111]">
+                                    <option key={dept.id} value={dept.id} className="bg-[var(--background)] text-[var(--foreground)]">
                                       {dept.name}
                                     </option>
                                   ))}
@@ -998,7 +1032,7 @@ export default function SettingsPage() {
                                     type="button"
                                     onClick={() => void handleSaveDepartmentAssign(item.userId)}
                                     disabled={updatingMemberId === item.userId}
-                                    className="rounded-2xl border border-white/12 bg-white px-4 py-2.5 text-sm font-semibold text-black transition hover:opacity-90 disabled:opacity-50"
+                                    className={actionPrimaryClass()}
                                   >
                                     {updatingMemberId === item.userId ? "Saving..." : "Save"}
                                   </button>
@@ -1007,7 +1041,7 @@ export default function SettingsPage() {
                                     type="button"
                                     onClick={() => setAssigningMemberId(null)}
                                     disabled={updatingMemberId === item.userId}
-                                    className="rounded-2xl border border-white/12 bg-white/6 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-white/10 disabled:opacity-50"
+                                    className={actionGhostClass()}
                                   >
                                     Cancel
                                   </button>
@@ -1020,7 +1054,7 @@ export default function SettingsPage() {
                     })}
                   </div>
                 ) : (
-                  <div className="mt-4 rounded-2xl border border-white/8 bg-black/15 px-4 py-8 text-center text-sm text-white/45">
+                  <div className="mt-4 rounded-2xl border border-[var(--border)] bg-[var(--card-subtle)] px-4 py-8 text-center text-sm text-[var(--foreground-muted)]">
                     No members found.
                   </div>
                 )}
