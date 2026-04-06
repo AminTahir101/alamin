@@ -12,6 +12,73 @@ type Org = {
   name: string;
 };
 
+type OnboardingDraft = {
+  personal: {
+    firstName: string;
+    lastName: string;
+    email: string;
+  };
+  company: {
+    companyName: string;
+    registrationNumber: string;
+    industry: string;
+    country: string;
+    employeeCount: string;
+  };
+  aiSetup: {
+    mainStrategy: string;
+    departments: Array<{
+      name: string;
+      headName: string;
+      headEmail: string;
+    }>;
+  };
+};
+
+const INDUSTRIES = [
+  "Banking & Financial Services",
+  "Insurance",
+  "FinTech",
+  "Government",
+  "Telecommunications",
+  "Technology",
+  "Healthcare",
+  "Pharmaceuticals",
+  "Manufacturing",
+  "Retail & E-commerce",
+  "Logistics & Supply Chain",
+  "Construction & Real Estate",
+  "Energy & Utilities",
+  "Oil & Gas",
+  "Education",
+  "Hospitality & Tourism",
+  "Transportation",
+  "Media & Entertainment",
+  "Professional Services",
+  "Human Resources",
+  "Agriculture",
+  "Food & Beverage",
+  "Nonprofit",
+  "Other",
+];
+
+const COUNTRIES = [
+  "Saudi Arabia",
+  "United Arab Emirates",
+  "Qatar",
+  "Kuwait",
+  "Bahrain",
+  "Oman",
+  "Egypt",
+  "Jordan",
+  "Sudan",
+  "United Kingdom",
+  "United States",
+  "India",
+  "Brazil",
+  "Other",
+];
+
 function getErrorMessage(err: unknown, fallback: string) {
   if (err instanceof Error) return err.message;
   if (typeof err === "string") return err;
@@ -90,6 +157,38 @@ function readLastOrgSlug() {
   }
 }
 
+function saveOnboardingDraft(draft: OnboardingDraft) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem("alamin_onboarding_draft", JSON.stringify(draft));
+  } catch {
+    // ignore
+  }
+}
+
+function isOrganizationEmail(email: string) {
+  const value = email.trim().toLowerCase();
+  if (!value.includes("@")) return false;
+
+  const blockedDomains = [
+    "gmail.com",
+    "googlemail.com",
+    "hotmail.com",
+    "outlook.com",
+    "live.com",
+    "yahoo.com",
+    "icloud.com",
+    "me.com",
+    "msn.com",
+    "aol.com",
+    "proton.me",
+    "protonmail.com",
+  ];
+
+  const domain = value.split("@")[1] ?? "";
+  return domain.length > 0 && !blockedDomains.includes(domain);
+}
+
 async function fetchUserOrgs(accessToken: string): Promise<Org[]> {
   const res = await fetch("/api/auth/orgs", {
     method: "GET",
@@ -109,12 +208,77 @@ async function fetchUserOrgs(accessToken: string): Promise<Org[]> {
   return Array.isArray(parsed.orgs) ? parsed.orgs : [];
 }
 
+function ThemeToggle() {
+  const [mounted, setMounted] = useState(false);
+  const [theme, setTheme] = useState<"night" | "daylight">("night");
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      const stored = window.localStorage.getItem("alamin-theme");
+      setTheme(stored === "daylight" ? "daylight" : "night");
+      setMounted(true);
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+
+    const root = document.documentElement;
+    root.setAttribute("data-theme", theme);
+    root.classList.toggle("dark", theme === "night");
+    window.localStorage.setItem("alamin-theme", theme);
+  }, [theme, mounted]);
+
+  if (!mounted) {
+    return (
+      <div className="alamin-theme-toggle">
+        <button type="button" data-active={false}>
+          Daylight
+        </button>
+        <button type="button" data-active={true}>
+          Night
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="alamin-theme-toggle">
+      <button
+        type="button"
+        data-active={theme === "daylight"}
+        onClick={() => setTheme("daylight")}
+      >
+        Daylight
+      </button>
+      <button
+        type="button"
+        data-active={theme === "night"}
+        onClick={() => setTheme("night")}
+      >
+        Night
+      </button>
+    </div>
+  );
+}
+
 export default function AuthPage() {
   const router = useRouter();
 
   const [mode, setMode] = useState<"login" | "signup">("login");
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [companyName, setCompanyName] = useState("");
+  const [companyRegistrationNumber, setCompanyRegistrationNumber] = useState("");
+  const [industry, setIndustry] = useState("Technology");
+  const [country, setCountry] = useState("Saudi Arabia");
+  const [employeeCount, setEmployeeCount] = useState("");
 
   const [loading, setLoading] = useState(false);
   const [booting, setBooting] = useState(true);
@@ -168,7 +332,7 @@ export default function AuthPage() {
 
         setShowOrgPicker(false);
         setMsg(
-          "No organization membership was found for this account yet. Create a workspace slug below to continue onboarding."
+          "No organization membership was found for this account yet. Create a workspace and continue into onboarding."
         );
       } catch (err: unknown) {
         setMsg(getErrorMessage(err, "Failed to resolve workspace"));
@@ -198,9 +362,25 @@ export default function AuthPage() {
     e.preventDefault();
     setMsg(null);
 
-    const cleanEmail = email.trim();
+    const cleanEmail = email.trim().toLowerCase();
+
     if (!cleanEmail) return setMsg("Email is required.");
     if (!password) return setMsg("Password is required.");
+
+    if (mode === "signup") {
+      if (!firstName.trim()) return setMsg("First name is required.");
+      if (!lastName.trim()) return setMsg("Last name is required.");
+      if (!isOrganizationEmail(cleanEmail)) {
+        return setMsg("Use an organization email only. Personal email domains are not allowed.");
+      }
+      if (!companyName.trim()) return setMsg("Company name is required.");
+      if (country === "Saudi Arabia" && !companyRegistrationNumber.trim()) {
+        return setMsg("Company registration number is required for Saudi companies.");
+      }
+      if (!industry.trim()) return setMsg("Industry is required.");
+      if (!country.trim()) return setMsg("Country is required.");
+      if (!employeeCount.trim()) return setMsg("Number of employees is required.");
+    }
 
     if (!envHint.url || !envHint.key) {
       setMsg("Supabase env is missing. Check .env.local and restart npm run dev.");
@@ -218,15 +398,50 @@ export default function AuthPage() {
 
     try {
       if (mode === "signup") {
+        const signupDraft: OnboardingDraft = {
+          personal: {
+            firstName: firstName.trim(),
+            lastName: lastName.trim(),
+            email: cleanEmail,
+          },
+          company: {
+            companyName: companyName.trim(),
+            registrationNumber: companyRegistrationNumber.trim(),
+            industry: industry.trim(),
+            country: country.trim(),
+            employeeCount: employeeCount.trim(),
+          },
+          aiSetup: {
+            mainStrategy: "",
+            departments: [{ name: "", headName: "", headEmail: "" }],
+          },
+        };
+
+        saveOnboardingDraft(signupDraft);
+
         const { error } = await supabase.auth.signUp({
           email: cleanEmail,
           password,
+          options: {
+            data: {
+              first_name: firstName.trim(),
+              last_name: lastName.trim(),
+              company_name: companyName.trim(),
+              company_registration_number: companyRegistrationNumber.trim(),
+              industry: industry.trim(),
+              country: country.trim(),
+              employee_count: employeeCount.trim(),
+            },
+          },
         });
+
         if (error) throw error;
 
         const session = await waitForSession(3500);
         if (session) {
-          await resolveTenantAndRoute(session);
+          const slug = normalizeSlug(companyName || `${firstName}-${lastName}-workspace`);
+          rememberOrgSlug(slug);
+          router.replace(`/o/${encodeURIComponent(slug)}/onboarding`);
         } else {
           setMsg("Account created. If email confirmation is enabled, confirm your email and then log in.");
         }
@@ -235,6 +450,7 @@ export default function AuthPage() {
           email: cleanEmail,
           password,
         });
+
         if (error) throw error;
 
         const session = await waitForSession(3500);
@@ -265,12 +481,32 @@ export default function AuthPage() {
   }
 
   function goToCreateWorkspace() {
-    const slug = normalizeSlug(newOrgSlug || newOrgName);
+    const slug = normalizeSlug(newOrgSlug || newOrgName || companyName);
     if (!slug) {
       setMsg("Enter a valid workspace slug or company name.");
       return;
     }
 
+    const draft: OnboardingDraft = {
+      personal: {
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        email: email.trim().toLowerCase(),
+      },
+      company: {
+        companyName: (newOrgName || companyName).trim(),
+        registrationNumber: companyRegistrationNumber.trim(),
+        industry: industry.trim(),
+        country: country.trim() || "Saudi Arabia",
+        employeeCount: employeeCount.trim(),
+      },
+      aiSetup: {
+        mainStrategy: "",
+        departments: [{ name: "", headName: "", headEmail: "" }],
+      },
+    };
+
+    saveOnboardingDraft(draft);
     rememberOrgSlug(slug);
     router.replace(`/o/${encodeURIComponent(slug)}/onboarding`);
   }
@@ -291,10 +527,10 @@ export default function AuthPage() {
 
   if (booting) {
     return (
-      <div className="min-h-screen bg-[#07090D] text-white">
-        <div className="absolute inset-x-0 top-0 -z-10 h-[520px] bg-[radial-gradient(circle_at_top,rgba(124,58,237,0.28),transparent_38%),radial-gradient(circle_at_top_right,rgba(34,211,238,0.14),transparent_28%)]" />
+      <div className="min-h-screen bg-background text-foreground">
+        <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,rgba(99,102,241,0.22),transparent_32%),radial-gradient(circle_at_top_right,rgba(34,211,238,0.12),transparent_24%)]" />
         <div className="mx-auto flex min-h-screen max-w-7xl items-center justify-center px-6">
-          <div className="w-full max-w-xl rounded-[28px] border border-white/10 bg-white/[0.04] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.45)]">
+          <div className="w-full max-w-xl rounded-[32px] border border-[var(--border-strong)] bg-[var(--background-panel)] p-6 alamin-glow">
             <div className="h-5 w-32 animate-pulse rounded-full bg-white/10" />
             <div className="mt-5 h-12 w-64 animate-pulse rounded-2xl bg-white/10" />
             <div className="mt-3 h-5 w-80 animate-pulse rounded-xl bg-white/10" />
@@ -310,97 +546,105 @@ export default function AuthPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#07090D] text-white">
-      <div className="absolute inset-x-0 top-0 -z-10 h-[580px] bg-[radial-gradient(circle_at_top,rgba(124,58,237,0.28),transparent_36%),radial-gradient(circle_at_top_right,rgba(34,211,238,0.14),transparent_28%)]" />
+    <div className="min-h-screen bg-background text-foreground">
+      <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,rgba(99,102,241,0.22),transparent_32%),radial-gradient(circle_at_top_right,rgba(34,211,238,0.12),transparent_24%)]" />
 
-      <header className="sticky top-0 z-30 border-b border-white/10 bg-[#07090D]/80 backdrop-blur-xl">
+      <header className="sticky top-0 z-30 border-b border-[var(--border)] bg-[color:var(--background)]/80 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4 lg:px-8">
           <Link href="/" className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 shadow-[0_0_0_1px_rgba(124,58,237,0.12),0_14px_30px_rgba(0,0,0,0.35)]">
-              <div className="h-5 w-5 rounded-full bg-[linear-gradient(135deg,#7C3AED_0%,#22D3EE_100%)]" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-[var(--border-strong)] bg-[var(--card)] alamin-glow">
+              <div className="h-5 w-5 rounded-full bg-[linear-gradient(135deg,#6d5efc_0%,#37cfff_100%)]" />
             </div>
             <div>
-              <div className="text-sm font-semibold tracking-[0.22em] text-white/60">ALAMIN</div>
-              <div className="text-sm text-white/80">AI Performance Intelligence</div>
+              <div className="text-sm font-semibold tracking-[0.22em] text-[var(--foreground-soft)]">
+                ALAMIN
+              </div>
+              <div className="text-sm text-[var(--foreground-muted)]">
+                AI Performance Intelligence
+              </div>
             </div>
           </Link>
 
-          <nav className="hidden items-center gap-8 text-sm text-white/70 md:flex">
-            <Link href="/#features" className="transition hover:text-white">
+          <nav className="hidden items-center gap-8 text-sm text-[var(--foreground-muted)] md:flex">
+            <Link href="/#features" className="transition hover:text-[var(--foreground)]">
               Features
             </Link>
-            <Link href="/#security" className="transition hover:text-white">
+            <Link href="/#security" className="transition hover:text-[var(--foreground)]">
               Security
             </Link>
-            <Link href="/#pricing" className="transition hover:text-white">
+            <Link href="/#pricing" className="transition hover:text-[var(--foreground)]">
               Pricing
             </Link>
           </nav>
 
-          <Link
-            href="/"
-            className="inline-flex h-11 items-center justify-center rounded-full border border-white/12 bg-white/5 px-5 text-sm font-medium text-white/90 transition hover:border-white/20 hover:bg-white/8"
-          >
-            Back to site
-          </Link>
+          <div className="flex items-center gap-3">
+            <div className="hidden md:block">
+              <ThemeToggle />
+            </div>
+            <Link
+              href="/"
+              className="inline-flex h-11 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-5 text-sm font-medium text-[var(--foreground-soft)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
+            >
+              Back to site
+            </Link>
+          </div>
         </div>
       </header>
 
-      <main className="mx-auto grid min-h-[calc(100vh-76px)] max-w-7xl gap-12 px-6 py-10 lg:grid-cols-[minmax(0,1.04fr)_minmax(420px,0.96fr)] lg:px-8 lg:py-14">
+      <main className="mx-auto grid min-h-[calc(100vh-76px)] max-w-7xl gap-12 px-6 py-10 lg:grid-cols-[minmax(0,1.04fr)_minmax(520px,0.96fr)] lg:px-8 lg:py-14">
         <section className="flex flex-col justify-center">
-          <div className="inline-flex w-fit items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-medium text-white/70">
-            <span className="h-2 w-2 rounded-full bg-[#22D3EE]" />
+          <div className="inline-flex w-fit items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-xs font-medium text-[var(--foreground-muted)]">
+            <span className="h-2 w-2 rounded-full bg-[var(--accent-2)]" />
             Secure workspace access for strategy, execution, and AI
           </div>
 
-          <h1 className="mt-6 max-w-3xl text-5xl font-semibold leading-[1.02] tracking-tight text-white md:text-6xl">
-            Access your company execution
-            <span className="block bg-[linear-gradient(135deg,#FFFFFF_0%,#B69CFF_38%,#7DE7F3_100%)] bg-clip-text text-transparent">
-              command center.
+          <h1 className="mt-6 max-w-3xl text-5xl font-semibold leading-[1.02] tracking-tight text-[var(--foreground)] md:text-6xl">
+            Build your company execution
+            <span className="block bg-[linear-gradient(135deg,var(--foreground)_0%,#9b8cff_38%,#64dcff_100%)] bg-clip-text text-transparent">
+              system the right way.
             </span>
           </h1>
 
-          <p className="mt-6 max-w-2xl text-lg leading-8 text-white/68">
-            Log in to your workspace, continue onboarding, or switch between organizations without
-            losing context. This is where KPIs, objectives, OKRs, tasks, and AI decisions come
-            together.
+          <p className="mt-6 max-w-2xl text-lg leading-8 text-[var(--foreground-muted)]">
+            Sign in to your workspace or start a structured onboarding that captures the company,
+            strategy, departments, and execution layer from the beginning.
           </p>
 
           <div className="mt-10 grid gap-4 sm:grid-cols-3">
-            <InfoPill value="1" label="secure workspace per organization" />
-            <InfoPill value="AI" label="generation, review, and action" />
-            <InfoPill value="Live" label="performance and execution visibility" />
+            <InfoPill value="1" label="workspace per organization" />
+            <InfoPill value="AI" label="strategy to execution setup" />
+            <InfoPill value="Secure" label="organization email access" />
           </div>
 
           <div className="mt-10 grid gap-4 md:grid-cols-2">
             <SignalCard
-              eyebrow="What happens after login"
-              title="Route users to the right workspace"
-              desc="Users land in the correct organization automatically, or pick from multiple workspaces when needed."
+              eyebrow="What changes now"
+              title="Better onboarding handoff"
+              desc="Sign up collects the right company context first, then continues into a proper onboarding flow."
             />
             <SignalCard
-              eyebrow="Built for B2B reality"
-              title="No messy tenant confusion"
-              desc="Workspace routing, organization memory, and onboarding fallback are all handled in one flow."
+              eyebrow="Built for real companies"
+              title="No weak first-run experience"
+              desc="Personal info, company info, and AI setup are treated like a real SaaS onboarding flow, not an afterthought."
             />
           </div>
         </section>
 
         <section className="relative">
-          <div className="absolute inset-0 rounded-[30px] bg-[linear-gradient(135deg,rgba(124,58,237,0.22),rgba(34,211,238,0.08))] blur-2xl" />
-          <div className="relative overflow-hidden rounded-[30px] border border-white/12 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] p-5 shadow-[0_0_0_1px_rgba(124,58,237,0.12),0_24px_80px_rgba(0,0,0,0.45)] md:p-6">
-            <div className="rounded-[24px] border border-white/10 bg-[#0D1118] p-5 md:p-6">
+          <div className="absolute inset-0 rounded-[32px] bg-[linear-gradient(135deg,rgba(109,94,252,0.18),rgba(55,207,255,0.08))] blur-2xl" />
+          <div className="relative overflow-hidden rounded-[32px] border border-[var(--border-strong)] bg-[var(--background-panel)] p-5 alamin-glow md:p-6">
+            <div className="rounded-[26px] border border-[var(--border)] bg-[var(--background-elevated)] p-5 md:p-6">
               {showOrgPicker ? (
                 <>
                   <div className="flex items-start justify-between gap-4">
                     <div>
-                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-white/40">
+                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
                         Workspace selection
                       </div>
-                      <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">
+                      <h2 className="mt-3 text-3xl font-semibold tracking-tight text-[var(--foreground)]">
                         Choose your company
                       </h2>
-                      <p className="mt-3 max-w-md text-sm leading-7 text-white/62">
+                      <p className="mt-3 max-w-md text-sm leading-7 text-[var(--foreground-muted)]">
                         This account belongs to multiple organizations. Pick the workspace you want
                         to enter.
                       </p>
@@ -409,7 +653,7 @@ export default function AuthPage() {
                     <button
                       type="button"
                       onClick={() => void logout()}
-                      className="inline-flex h-11 items-center justify-center rounded-full border border-white/12 bg-white/[0.04] px-5 text-sm font-semibold text-white/88 transition hover:border-white/22 hover:bg-white/[0.08]"
+                      className="inline-flex h-11 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-5 text-sm font-semibold text-[var(--foreground-soft)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
                     >
                       Logout
                     </button>
@@ -421,13 +665,13 @@ export default function AuthPage() {
                         key={org.id}
                         type="button"
                         onClick={() => selectOrg(org.slug)}
-                        className="group flex w-full items-center justify-between rounded-[22px] border border-white/10 bg-white/[0.03] px-5 py-4 text-left transition hover:border-white/20 hover:bg-white/[0.06]"
+                        className="group flex w-full items-center justify-between rounded-[22px] border border-[var(--border)] bg-[var(--card-subtle)] px-5 py-4 text-left transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
                       >
                         <div>
-                          <div className="text-base font-semibold text-white">{org.name}</div>
-                          <div className="mt-1 text-sm text-white/45">/{org.slug}</div>
+                          <div className="text-base font-semibold text-[var(--foreground)]">{org.name}</div>
+                          <div className="mt-1 text-sm text-[var(--foreground-faint)]">/{org.slug}</div>
                         </div>
-                        <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-semibold text-white/75 transition group-hover:border-white/18 group-hover:bg-white/[0.08]">
+                        <span className="rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-3 py-1 text-xs font-semibold text-[var(--foreground-soft)] transition group-hover:border-[var(--border-strong)] group-hover:bg-[var(--button-secondary-hover)]">
                           Open
                         </span>
                       </button>
@@ -438,29 +682,29 @@ export default function AuthPage() {
                 <>
                   <div className="flex items-start justify-between gap-4">
                     <div>
-                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-white/40">
+                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
                         Secure access
                       </div>
-                      <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">
+                      <h2 className="mt-3 text-3xl font-semibold tracking-tight text-[var(--foreground)]">
                         {mode === "login" ? "Welcome back" : "Create your account"}
                       </h2>
-                      <p className="mt-3 text-sm leading-7 text-white/62">
+                      <p className="mt-3 text-sm leading-7 text-[var(--foreground-muted)]">
                         {mode === "login"
                           ? "Log in to access your workspace and continue execution."
-                          : "Create an account, then continue to your company workspace."}
+                          : "Start with the right company context, then continue to onboarding."}
                       </p>
                     </div>
                   </div>
 
-                  <div className="mt-6 inline-flex rounded-full border border-white/10 bg-white/[0.03] p-1">
+                  <div className="mt-6 inline-flex rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] p-1">
                     <button
                       type="button"
                       onClick={() => setMode("login")}
                       disabled={loading || resolvingTenant}
                       className={`rounded-full px-5 py-2.5 text-sm font-semibold transition ${
                         mode === "login"
-                          ? "bg-white text-[#07090D]"
-                          : "text-white/70 hover:text-white"
+                          ? "bg-[var(--foreground)] text-[var(--background)]"
+                          : "text-[var(--foreground-muted)] hover:text-[var(--foreground)]"
                       }`}
                     >
                       Login
@@ -471,8 +715,8 @@ export default function AuthPage() {
                       disabled={loading || resolvingTenant}
                       className={`rounded-full px-5 py-2.5 text-sm font-semibold transition ${
                         mode === "signup"
-                          ? "bg-white text-[#07090D]"
-                          : "text-white/70 hover:text-white"
+                          ? "bg-[var(--foreground)] text-[var(--background)]"
+                          : "text-[var(--foreground-muted)] hover:text-[var(--foreground)]"
                       }`}
                     >
                       Sign up
@@ -480,46 +724,192 @@ export default function AuthPage() {
                   </div>
 
                   <form onSubmit={handleSubmit} className="mt-6 grid gap-4">
-                    <FieldShell
-                      label="Work email"
-                      hint={mode === "signup" ? "Use your company email if possible." : undefined}
-                    >
-                      <input
-                        placeholder="name@company.com"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        type="email"
-                        autoComplete="email"
-                        required
-                        className="h-12 w-full rounded-2xl border border-white/10 bg-white/[0.03] px-4 text-white outline-none placeholder:text-white/25 transition focus:border-white/20"
-                      />
-                    </FieldShell>
+                    {mode === "signup" ? (
+                      <>
+                        <div className="rounded-[22px] border border-[var(--border)] bg-[var(--card-subtle)] p-4">
+                          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
+                            Personal info
+                          </div>
+                          <div className="mt-4 grid gap-4 md:grid-cols-2">
+                            <FieldShell label="First name">
+                              <input
+                                placeholder="First name"
+                                value={firstName}
+                                onChange={(e) => setFirstName(e.target.value)}
+                                type="text"
+                                autoComplete="given-name"
+                                className="h-12 w-full rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none placeholder:text-[var(--foreground-faint)] transition focus:border-[var(--border-strong)]"
+                              />
+                            </FieldShell>
 
-                    <FieldShell
-                      label="Password"
-                      hint={mode === "signup" ? "Use a strong password for your workspace access." : undefined}
-                    >
-                      <input
-                        placeholder={mode === "login" ? "Enter your password" : "Create a password"}
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        type="password"
-                        autoComplete={mode === "login" ? "current-password" : "new-password"}
-                        required
-                        className="h-12 w-full rounded-2xl border border-white/10 bg-white/[0.03] px-4 text-white outline-none placeholder:text-white/25 transition focus:border-white/20"
-                      />
-                    </FieldShell>
+                            <FieldShell label="Last name">
+                              <input
+                                placeholder="Last name"
+                                value={lastName}
+                                onChange={(e) => setLastName(e.target.value)}
+                                type="text"
+                                autoComplete="family-name"
+                                className="h-12 w-full rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none placeholder:text-[var(--foreground-faint)] transition focus:border-[var(--border-strong)]"
+                              />
+                            </FieldShell>
+
+                            <div className="md:col-span-2">
+                              <FieldShell label="Organization email only" hint="Personal email domains are blocked">
+                                <input
+                                  placeholder="name@company.com"
+                                  value={email}
+                                  onChange={(e) => setEmail(e.target.value)}
+                                  type="email"
+                                  autoComplete="email"
+                                  className="h-12 w-full rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none placeholder:text-[var(--foreground-faint)] transition focus:border-[var(--border-strong)]"
+                                />
+                              </FieldShell>
+                            </div>
+
+                            <div className="md:col-span-2">
+                              <FieldShell label="Password" hint="Use a strong password for workspace access">
+                                <input
+                                  placeholder="Create a password"
+                                  value={password}
+                                  onChange={(e) => setPassword(e.target.value)}
+                                  type="password"
+                                  autoComplete="new-password"
+                                  className="h-12 w-full rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none placeholder:text-[var(--foreground-faint)] transition focus:border-[var(--border-strong)]"
+                                />
+                              </FieldShell>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="rounded-[22px] border border-[var(--border)] bg-[var(--card-subtle)] p-4">
+                          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
+                            Company info
+                          </div>
+                          <div className="mt-4 grid gap-4 md:grid-cols-2">
+                            <FieldShell label="Company name">
+                              <input
+                                placeholder="Company name"
+                                value={companyName}
+                                onChange={(e) => {
+                                  setCompanyName(e.target.value);
+                                  if (!newOrgName) setNewOrgName(e.target.value);
+                                }}
+                                type="text"
+                                className="h-12 w-full rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none placeholder:text-[var(--foreground-faint)] transition focus:border-[var(--border-strong)]"
+                              />
+                            </FieldShell>
+
+                            <FieldShell
+                              label="Company registration number"
+                              hint={country === "Saudi Arabia" ? "Saudi companies only" : "Optional outside Saudi Arabia"}
+                            >
+                              <input
+                                placeholder="CR Number"
+                                value={companyRegistrationNumber}
+                                onChange={(e) => setCompanyRegistrationNumber(e.target.value)}
+                                type="text"
+                                className="h-12 w-full rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none placeholder:text-[var(--foreground-faint)] transition focus:border-[var(--border-strong)]"
+                              />
+                            </FieldShell>
+
+                            <FieldShell label="Industry">
+                              <select
+                                value={industry}
+                                onChange={(e) => setIndustry(e.target.value)}
+                                className="h-12 w-full rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none transition focus:border-[var(--border-strong)]"
+                              >
+                                {INDUSTRIES.map((item) => (
+                                  <option key={item} value={item} className="bg-[#0d1118] text-white">
+                                    {item}
+                                  </option>
+                                ))}
+                              </select>
+                            </FieldShell>
+
+                            <FieldShell label="Country">
+                              <select
+                                value={country}
+                                onChange={(e) => setCountry(e.target.value)}
+                                className="h-12 w-full rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none transition focus:border-[var(--border-strong)]"
+                              >
+                                {COUNTRIES.map((item) => (
+                                  <option key={item} value={item} className="bg-[#0d1118] text-white">
+                                    {item}
+                                  </option>
+                                ))}
+                              </select>
+                            </FieldShell>
+
+                            <div className="md:col-span-2">
+                              <FieldShell label="Number of employees">
+                                <input
+                                  placeholder="e.g. 500"
+                                  value={employeeCount}
+                                  onChange={(e) => setEmployeeCount(e.target.value)}
+                                  type="number"
+                                  inputMode="numeric"
+                                  className="h-12 w-full rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none placeholder:text-[var(--foreground-faint)] transition focus:border-[var(--border-strong)]"
+                                />
+                              </FieldShell>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="rounded-[22px] border border-[var(--border)] bg-[var(--card-subtle)] p-4">
+                          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
+                            Next step after signup
+                          </div>
+                          <div className="mt-3 text-sm leading-7 text-[var(--foreground-muted)]">
+                            You will continue into onboarding to complete:
+                            <br />
+                            1. Main company strategy
+                            <br />
+                            2. Departments
+                            <br />
+                            3. Heads of departments
+                            <br />
+                            4. AI setup foundation
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <FieldShell label="Work email">
+                          <input
+                            placeholder="name@company.com"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            type="email"
+                            autoComplete="email"
+                            required
+                            className="h-12 w-full rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none placeholder:text-[var(--foreground-faint)] transition focus:border-[var(--border-strong)]"
+                          />
+                        </FieldShell>
+
+                        <FieldShell label="Password">
+                          <input
+                            placeholder="Enter your password"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            type="password"
+                            autoComplete="current-password"
+                            required
+                            className="h-12 w-full rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none placeholder:text-[var(--foreground-faint)] transition focus:border-[var(--border-strong)]"
+                          />
+                        </FieldShell>
+                      </>
+                    )}
 
                     <button
                       type="submit"
                       disabled={loading || resolvingTenant}
-                      className="mt-2 inline-flex h-12 items-center justify-center rounded-full bg-white px-5 text-sm font-semibold text-[#07090D] transition hover:bg-white/92 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="mt-2 inline-flex h-12 items-center justify-center rounded-full bg-[var(--foreground)] px-5 text-sm font-semibold text-[var(--background)] transition hover:opacity-92 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {loading || resolvingTenant
                         ? "Please wait..."
                         : mode === "login"
                           ? "Log in"
-                          : "Create account"}
+                          : "Create account and continue"}
                     </button>
                   </form>
 
@@ -536,15 +926,15 @@ export default function AuthPage() {
                   ) : null}
 
                   {showWorkspaceCreate ? (
-                    <div className="mt-6 rounded-[24px] border border-white/10 bg-white/[0.03] p-5">
-                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-white/40">
+                    <div className="mt-6 rounded-[24px] border border-[var(--border)] bg-[var(--card-subtle)] p-5">
+                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
                         Create a workspace
                       </div>
-                      <div className="mt-3 text-base font-semibold text-white">
+                      <div className="mt-3 text-base font-semibold text-[var(--foreground)]">
                         No company is linked to this account yet
                       </div>
-                      <div className="mt-2 text-sm leading-7 text-white/62">
-                        Continue onboarding with a company name and workspace slug.
+                      <div className="mt-2 text-sm leading-7 text-[var(--foreground-muted)]">
+                        Continue into the structured onboarding flow with a company and workspace slug.
                       </div>
 
                       <div className="mt-4 grid gap-3">
@@ -552,18 +942,18 @@ export default function AuthPage() {
                           value={newOrgName}
                           onChange={(e) => setNewOrgName(e.target.value)}
                           placeholder="Company name"
-                          className="h-11 rounded-2xl border border-white/10 bg-white/[0.03] px-4 text-white outline-none placeholder:text-white/25 transition focus:border-white/20"
+                          className="h-11 rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none placeholder:text-[var(--foreground-faint)] transition focus:border-[var(--border-strong)]"
                         />
                         <input
                           value={newOrgSlug}
                           onChange={(e) => setNewOrgSlug(normalizeSlug(e.target.value))}
                           placeholder="workspace-slug"
-                          className="h-11 rounded-2xl border border-white/10 bg-white/[0.03] px-4 text-white outline-none placeholder:text-white/25 transition focus:border-white/20"
+                          className="h-11 rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none placeholder:text-[var(--foreground-faint)] transition focus:border-[var(--border-strong)]"
                         />
                         <button
                           type="button"
                           onClick={goToCreateWorkspace}
-                          className="inline-flex h-11 items-center justify-center rounded-full border border-white/12 bg-white/[0.06] px-4 text-sm font-semibold text-white transition hover:border-white/22 hover:bg-white/[0.1]"
+                          className="inline-flex h-11 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-sm font-semibold text-[var(--foreground)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
                         >
                           Continue to onboarding
                         </button>
@@ -571,22 +961,22 @@ export default function AuthPage() {
                     </div>
                   ) : null}
 
-                  <div className="mt-6 rounded-[22px] border border-white/10 bg-white/[0.03] p-4">
-                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-white/40">
+                  <div className="mt-6 rounded-[22px] border border-[var(--border)] bg-[var(--card-subtle)] p-4">
+                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
                       What you get inside
                     </div>
                     <div className="mt-4 grid gap-3 sm:grid-cols-2">
                       <MiniFeature
-                        title="Workspace routing"
-                        desc="Send users to the right organization without friction."
-                      />
-                      <MiniFeature
                         title="Structured onboarding"
-                        desc="Create company setup and continue directly into execution."
+                        desc="Personal, company, and AI setup flow from the start."
                       />
                       <MiniFeature
-                        title="AI-ready flows"
-                        desc="Access KPI, OKR, JTBD, and task generation workflows."
+                        title="Organization email only"
+                        desc="Better quality company onboarding and less junk signups."
+                      />
+                      <MiniFeature
+                        title="AI-ready setup"
+                        desc="Prepare strategy, departments, and ownership before execution begins."
                       />
                       <MiniFeature
                         title="Tenant-safe access"
@@ -616,8 +1006,8 @@ function FieldShell({
   return (
     <div className="grid gap-2">
       <div className="flex items-center justify-between gap-3">
-        <label className="text-sm font-medium text-white/72">{label}</label>
-        {hint ? <span className="text-xs text-white/38">{hint}</span> : null}
+        <label className="text-sm font-medium text-[var(--foreground-soft)]">{label}</label>
+        {hint ? <span className="text-xs text-[var(--foreground-faint)]">{hint}</span> : null}
       </div>
       {children}
     </div>
@@ -626,9 +1016,9 @@ function FieldShell({
 
 function InfoPill({ value, label }: { value: string; label: string }) {
   return (
-    <div className="rounded-[20px] border border-white/10 bg-white/[0.04] px-5 py-4 shadow-[0_14px_30px_rgba(0,0,0,0.22)]">
-      <div className="text-2xl font-semibold tracking-tight text-white">{value}</div>
-      <div className="mt-1 text-sm text-white/58">{label}</div>
+    <div className="rounded-[22px] border border-[var(--border)] bg-[var(--card)] px-5 py-4 alamin-shadow">
+      <div className="text-2xl font-semibold tracking-tight text-[var(--foreground)]">{value}</div>
+      <div className="mt-1 text-sm text-[var(--foreground-muted)]">{label}</div>
     </div>
   );
 }
@@ -643,21 +1033,21 @@ function SignalCard({
   desc: string;
 }) {
   return (
-    <div className="rounded-[24px] border border-white/10 bg-white/[0.035] p-6 shadow-[0_16px_36px_rgba(0,0,0,0.22)]">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">
+    <div className="rounded-[24px] border border-[var(--border)] bg-[var(--card)] p-6 alamin-shadow">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
         {eyebrow}
       </div>
-      <div className="mt-3 text-lg font-semibold text-white">{title}</div>
-      <div className="mt-3 text-sm leading-7 text-white/62">{desc}</div>
+      <div className="mt-3 text-lg font-semibold text-[var(--foreground)]">{title}</div>
+      <div className="mt-3 text-sm leading-7 text-[var(--foreground-muted)]">{desc}</div>
     </div>
   );
 }
 
 function MiniFeature({ title, desc }: { title: string; desc: string }) {
   return (
-    <div className="rounded-[18px] border border-white/10 bg-white/[0.03] p-4">
-      <div className="text-sm font-semibold text-white">{title}</div>
-      <div className="mt-2 text-sm leading-6 text-white/60">{desc}</div>
+    <div className="rounded-[18px] border border-[var(--border)] bg-[var(--card-subtle)] p-4">
+      <div className="text-sm font-semibold text-[var(--foreground)]">{title}</div>
+      <div className="mt-2 text-sm leading-6 text-[var(--foreground-muted)]">{desc}</div>
     </div>
   );
 }

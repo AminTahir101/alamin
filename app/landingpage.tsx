@@ -1,6 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
+
+
+<div style={{ position: "fixed", top: 10, left: 10, zIndex: 9999, background: "red", color: "white", padding: "8px 12px", borderRadius: 8 }}>
+  LANDINGPAGE LIVE
+</div>
 
 type Feature = {
   title: string;
@@ -89,45 +95,108 @@ const tiers: PriceTier[] = [
   },
 ];
 
+function ThemeToggle() {
+  const [mounted, setMounted] = useState(false);
+  const [theme, setTheme] = useState<"night" | "daylight">("night");
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      const stored = window.localStorage.getItem("alamin-theme");
+      setTheme(stored === "daylight" ? "daylight" : "night");
+      setMounted(true);
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+
+    const root = document.documentElement;
+    root.setAttribute("data-theme", theme);
+    root.classList.toggle("dark", theme === "night");
+    window.localStorage.setItem("alamin-theme", theme);
+  }, [theme, mounted]);
+
+  if (!mounted) {
+    return (
+      <div className="alamin-theme-toggle">
+        <button type="button" data-active={false}>
+          Daylight
+        </button>
+        <button type="button" data-active={true}>
+          Night
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="alamin-theme-toggle">
+      <button
+        type="button"
+        data-active={theme === "daylight"}
+        onClick={() => setTheme("daylight")}
+      >
+        Daylight
+      </button>
+      <button
+        type="button"
+        data-active={theme === "night"}
+        onClick={() => setTheme("night")}
+      >
+        Night
+      </button>
+    </div>
+  );
+}
+
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-[#07090D] text-white">
-      <div className="absolute inset-x-0 top-0 -z-10 h-[520px] bg-[radial-gradient(circle_at_top,rgba(124,58,237,0.28),transparent_38%),radial-gradient(circle_at_top_right,rgba(34,211,238,0.14),transparent_28%)]" />
+    <div className="min-h-screen bg-background text-foreground">
+      <div className="absolute inset-x-0 top-0 -z-10 h-[560px] bg-[radial-gradient(circle_at_top,rgba(109,94,252,0.24),transparent_36%),radial-gradient(circle_at_top_right,rgba(55,207,255,0.14),transparent_28%)]" />
 
-      <header className="sticky top-0 z-30 border-b border-white/10 bg-[#07090D]/80 backdrop-blur-xl">
+      <header className="sticky top-0 z-30 border-b border-[var(--border)] bg-[color:var(--background)]/80 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4 lg:px-8">
           <Link href="/" className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 shadow-[0_0_0_1px_rgba(124,58,237,0.12),0_14px_30px_rgba(0,0,0,0.35)]">
-              <div className="h-5 w-5 rounded-full bg-[linear-gradient(135deg,#7C3AED_0%,#22D3EE_100%)]" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-[var(--border-strong)] bg-[var(--card)] alamin-glow">
+              <div className="h-5 w-5 rounded-full bg-[linear-gradient(135deg,#6d5efc_0%,#37cfff_100%)]" />
             </div>
             <div>
-              <div className="text-sm font-semibold tracking-[0.22em] text-white/60">ALAMIN</div>
-              <div className="text-sm text-white/80">AI Performance Intelligence</div>
+              <div className="text-sm font-semibold tracking-[0.22em] text-[var(--foreground-soft)]">
+                ALAMIN
+              </div>
+              <div className="text-sm text-[var(--foreground-muted)]">
+                AI Performance Intelligence
+              </div>
             </div>
           </Link>
 
-          <nav className="hidden items-center gap-8 text-sm text-white/70 md:flex">
-            <a href="#features" className="transition hover:text-white">
+          <nav className="hidden items-center gap-8 text-sm text-[var(--foreground-muted)] md:flex">
+            <a href="#features" className="transition hover:text-[var(--foreground)]">
               Features
             </a>
-            <a href="#security" className="transition hover:text-white">
+            <a href="#security" className="transition hover:text-[var(--foreground)]">
               Security
             </a>
-            <a href="#pricing" className="transition hover:text-white">
+            <a href="#pricing" className="transition hover:text-[var(--foreground)]">
               Pricing
             </a>
           </nav>
 
           <div className="flex items-center gap-3">
+            <div className="hidden md:block">
+              <ThemeToggle />
+            </div>
             <Link
               href="/auth"
-              className="inline-flex h-11 items-center justify-center rounded-full border border-white/12 bg-white/5 px-5 text-sm font-medium text-white/90 transition hover:border-white/20 hover:bg-white/8"
+              className="inline-flex h-11 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-5 text-sm font-medium text-[var(--foreground-soft)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
             >
               Log in
             </Link>
             <Link
               href="/auth"
-              className="inline-flex h-11 items-center justify-center rounded-full bg-white px-5 text-sm font-semibold text-[#07090D] transition hover:bg-white/90"
+              className="inline-flex h-11 items-center justify-center rounded-full bg-[var(--foreground)] px-5 text-sm font-semibold text-[var(--background)] transition hover:opacity-92"
             >
               Get started
             </Link>
@@ -138,19 +207,19 @@ export default function LandingPage() {
       <main>
         <section className="mx-auto grid max-w-7xl gap-12 px-6 pt-20 pb-16 lg:grid-cols-[minmax(0,1.08fr)_minmax(420px,0.92fr)] lg:px-8 lg:pt-24 lg:pb-20">
           <div className="max-w-3xl">
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-medium text-white/70">
-              <span className="h-2 w-2 rounded-full bg-[#22D3EE]" />
+            <div className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-xs font-medium text-[var(--foreground-muted)]">
+              <span className="h-2 w-2 rounded-full bg-[var(--accent-2)]" />
               Built for teams that need execution clarity, not more admin work
             </div>
 
-            <h1 className="mt-6 text-5xl font-semibold leading-[1.02] tracking-tight text-white md:text-6xl">
+            <h1 className="mt-6 text-5xl font-semibold leading-[1.02] tracking-tight text-[var(--foreground)] md:text-6xl">
               Turn company strategy into
-              <span className="block bg-[linear-gradient(135deg,#FFFFFF_0%,#B69CFF_38%,#7DE7F3_100%)] bg-clip-text text-transparent">
+              <span className="block bg-[linear-gradient(135deg,var(--foreground)_0%,#9b8cff_38%,#64dcff_100%)] bg-clip-text text-transparent">
                 measurable execution with AI.
               </span>
             </h1>
 
-            <p className="mt-6 max-w-2xl text-lg leading-8 text-white/68">
+            <p className="mt-6 max-w-2xl text-lg leading-8 text-[var(--foreground-muted)]">
               ALAMIN helps companies define goals, generate measurable OKRs, map Jobs-To-Be-Done,
               assign real work, and evaluate performance from one workspace instead of spreadsheets,
               status decks, and scattered follow-ups.
@@ -159,13 +228,13 @@ export default function LandingPage() {
             <div className="mt-9 flex flex-col gap-4 sm:flex-row">
               <Link
                 href="/auth"
-                className="inline-flex h-13 items-center justify-center rounded-full bg-white px-7 text-sm font-semibold text-[#07090D] transition hover:bg-white/90"
+                className="inline-flex h-[52px] items-center justify-center rounded-full bg-[var(--foreground)] px-7 text-sm font-semibold text-[var(--background)] transition hover:opacity-92"
               >
                 Get started
               </Link>
               <a
                 href="#pricing"
-                className="inline-flex h-13 items-center justify-center rounded-full border border-white/14 bg-white/5 px-7 text-sm font-semibold text-white transition hover:border-white/22 hover:bg-white/8"
+                className="inline-flex h-[52px] items-center justify-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-7 text-sm font-semibold text-[var(--foreground)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
               >
                 See pricing in SAR
               </a>
@@ -179,19 +248,19 @@ export default function LandingPage() {
           </div>
 
           <div className="relative">
-            <div className="absolute inset-0 rounded-[28px] bg-[linear-gradient(135deg,rgba(124,58,237,0.22),rgba(34,211,238,0.08))] blur-2xl" />
-            <div className="relative overflow-hidden rounded-[28px] border border-white/12 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] p-5 shadow-[0_0_0_1px_rgba(124,58,237,0.12),0_24px_80px_rgba(0,0,0,0.45)]">
-              <div className="rounded-[22px] border border-white/10 bg-[#0D1118] p-5">
+            <div className="absolute inset-0 rounded-[30px] bg-[linear-gradient(135deg,rgba(109,94,252,0.18),rgba(55,207,255,0.08))] blur-2xl" />
+            <div className="relative overflow-hidden rounded-[30px] border border-[var(--border-strong)] bg-[var(--background-panel)] p-5 alamin-glow">
+              <div className="rounded-[24px] border border-[var(--border)] bg-[var(--background-elevated)] p-5">
                 <div className="flex items-center justify-between gap-4">
                   <div>
-                    <div className="text-xs font-medium uppercase tracking-[0.22em] text-white/40">
+                    <div className="text-xs font-medium uppercase tracking-[0.22em] text-[var(--foreground-faint)]">
                       AI command preview
                     </div>
-                    <div className="mt-2 text-lg font-semibold text-white">
+                    <div className="mt-2 text-lg font-semibold text-[var(--foreground)]">
                       Execution health is slipping in Sales
                     </div>
                   </div>
-                  <div className="rounded-full border border-[#F59E0B]/20 bg-[#F59E0B]/12 px-3 py-1 text-xs font-semibold text-[#F7C15D]">
+                  <div className="rounded-full border border-amber-400/20 bg-amber-400/12 px-3 py-1 text-xs font-semibold text-amber-300">
                     At risk
                   </div>
                 </div>
@@ -216,17 +285,17 @@ export default function LandingPage() {
                     />
                   </div>
 
-                  <div className="rounded-[20px] border border-white/10 bg-white/[0.03] p-4">
+                  <div className="rounded-[20px] border border-[var(--border)] bg-[var(--card-subtle)] p-4">
                     <div className="flex items-center justify-between gap-4">
                       <div>
-                        <div className="text-xs font-medium uppercase tracking-[0.18em] text-white/40">
+                        <div className="text-xs font-medium uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
                           Next actions
                         </div>
-                        <div className="mt-2 text-sm text-white/75">
+                        <div className="mt-2 text-sm text-[var(--foreground-muted)]">
                           Generate tasks, assign owners, and publish the action plan to the Sales department.
                         </div>
                       </div>
-                      <div className="inline-flex h-10 items-center justify-center rounded-full bg-white px-4 text-sm font-semibold text-[#07090D]">
+                      <div className="inline-flex h-10 items-center justify-center rounded-full bg-[var(--foreground)] px-4 text-sm font-semibold text-[var(--background)]">
                         Review
                       </div>
                     </div>
@@ -254,15 +323,15 @@ export default function LandingPage() {
           </div>
         </section>
 
-        <section id="features" className="mx-auto max-w-7xl px-6 py-18 lg:px-8">
+        <section id="features" className="mx-auto max-w-7xl px-6 py-[72px] lg:px-8">
           <div className="max-w-2xl">
-            <div className="text-xs font-semibold uppercase tracking-[0.24em] text-white/40">
+            <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--foreground-faint)]">
               Features
             </div>
-            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white md:text-4xl">
+            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-[var(--foreground)] md:text-4xl">
               Built to connect strategy, execution, and evaluation.
             </h2>
-            <p className="mt-4 text-base leading-7 text-white/65">
+            <p className="mt-4 text-base leading-7 text-[var(--foreground-muted)]">
               ALAMIN is not another reporting dashboard. It is the layer that connects KPI signals,
               strategic goals, work ownership, and AI recommendations in one product.
             </p>
@@ -276,16 +345,16 @@ export default function LandingPage() {
         </section>
 
         <section id="security" className="mx-auto max-w-7xl px-6 py-6 lg:px-8">
-          <div className="overflow-hidden rounded-[28px] border border-white/12 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))] p-8 shadow-[0_18px_50px_rgba(0,0,0,0.35)] md:p-10">
+          <div className="overflow-hidden rounded-[30px] border border-[var(--border-strong)] bg-[var(--background-panel)] p-8 alamin-shadow md:p-10">
             <div className="grid gap-8 md:grid-cols-[1.15fr_0.85fr] md:items-center">
               <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.24em] text-white/40">
+                <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--foreground-faint)]">
                   Security
                 </div>
-                <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">
+                <h2 className="mt-3 text-3xl font-semibold tracking-tight text-[var(--foreground)]">
                   Built for serious B2B use.
                 </h2>
-                <p className="mt-4 max-w-2xl text-base leading-7 text-white/65">
+                <p className="mt-4 max-w-2xl text-base leading-7 text-[var(--foreground-muted)]">
                   Tenant isolation, role-ready access control, Supabase RLS compatibility, and a structure
                   designed for organization-safe data access. Keep service role keys on the server where
                   they belong. Not in the browser. Not in client code.
@@ -310,15 +379,15 @@ export default function LandingPage() {
           </div>
         </section>
 
-        <section id="pricing" className="mx-auto max-w-7xl px-6 pt-18 pb-22 lg:px-8">
+        <section id="pricing" className="mx-auto max-w-7xl px-6 pt-[72px] pb-[88px] lg:px-8">
           <div className="max-w-3xl">
-            <div className="text-xs font-semibold uppercase tracking-[0.24em] text-white/40">
+            <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--foreground-faint)]">
               Pricing
             </div>
-            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white md:text-4xl">
+            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-[var(--foreground)] md:text-4xl">
               Straightforward pricing in SAR.
             </h2>
-            <p className="mt-4 text-base leading-7 text-white/65">
+            <p className="mt-4 text-base leading-7 text-[var(--foreground-muted)]">
               Pricing built for Saudi teams and global scale. Simple per-seat pricing. No hidden tiers.
               Pay only for active users.
             </p>
@@ -330,23 +399,23 @@ export default function LandingPage() {
             ))}
           </div>
 
-          <div className="mt-8 rounded-[22px] border border-white/10 bg-white/5 p-5 text-sm text-white/62">
+          <div className="mt-8 rounded-[22px] border border-[var(--border)] bg-[var(--button-secondary-bg)] p-5 text-sm text-[var(--foreground-muted)]">
             Annual billing can be offered later. For now, keep it simple: monthly pricing in SAR,
             per-seat clarity, and enterprise handled through sales.
           </div>
         </section>
 
-        <footer className="border-t border-white/10 py-10">
-          <div className="mx-auto flex max-w-7xl flex-col gap-3 px-6 text-sm text-white/55 md:flex-row md:items-center md:justify-between lg:px-8">
+        <footer className="border-t border-[var(--border)] py-10">
+          <div className="mx-auto flex max-w-7xl flex-col gap-3 px-6 text-sm text-[var(--foreground-muted)] md:flex-row md:items-center md:justify-between lg:px-8">
             <div>© {new Date().getFullYear()} ALAMIN. AI Performance Intelligence.</div>
             <div className="flex gap-5">
-              <Link href="/auth" className="transition hover:text-white">
+              <Link href="/auth" className="transition hover:text-[var(--foreground)]">
                 Login
               </Link>
-              <a href="#features" className="transition hover:text-white">
+              <a href="#features" className="transition hover:text-[var(--foreground)]">
                 Features
               </a>
-              <a href="#pricing" className="transition hover:text-white">
+              <a href="#pricing" className="transition hover:text-[var(--foreground)]">
                 Pricing
               </a>
             </div>
@@ -359,18 +428,18 @@ export default function LandingPage() {
 
 function MetricChip({ value, label }: { value: string; label: string }) {
   return (
-    <div className="rounded-[20px] border border-white/10 bg-white/[0.04] px-5 py-4 shadow-[0_14px_30px_rgba(0,0,0,0.22)]">
-      <div className="text-2xl font-semibold tracking-tight text-white">{value}</div>
-      <div className="mt-1 text-sm text-white/58">{label}</div>
+    <div className="rounded-[22px] border border-[var(--border)] bg-[var(--card)] px-5 py-4 alamin-shadow">
+      <div className="text-2xl font-semibold tracking-tight text-[var(--foreground)]">{value}</div>
+      <div className="mt-1 text-sm text-[var(--foreground-muted)]">{label}</div>
     </div>
   );
 }
 
 function ValueCard({ title, desc }: { title: string; desc: string }) {
   return (
-    <div className="rounded-[24px] border border-white/10 bg-white/[0.035] p-6 shadow-[0_16px_36px_rgba(0,0,0,0.22)]">
-      <div className="text-lg font-semibold text-white">{title}</div>
-      <div className="mt-3 text-sm leading-7 text-white/62">{desc}</div>
+    <div className="rounded-[24px] border border-[var(--border)] bg-[var(--card)] p-6 alamin-card-hover alamin-shadow">
+      <div className="text-lg font-semibold text-[var(--foreground)]">{title}</div>
+      <div className="mt-3 text-sm leading-7 text-[var(--foreground-muted)]">{desc}</div>
     </div>
   );
 }
@@ -385,21 +454,21 @@ function PreviewCard({
   body: string;
 }) {
   return (
-    <div className="rounded-[20px] border border-white/10 bg-white/[0.03] p-4">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/40">
+    <div className="rounded-[20px] border border-[var(--border)] bg-[var(--card-subtle)] p-4">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--foreground-faint)]">
         {label}
       </div>
-      <div className="mt-2 text-sm font-semibold text-white">{title}</div>
-      <div className="mt-2 text-sm leading-6 text-white/62">{body}</div>
+      <div className="mt-2 text-sm font-semibold text-[var(--foreground)]">{title}</div>
+      <div className="mt-2 text-sm leading-6 text-[var(--foreground-muted)]">{body}</div>
     </div>
   );
 }
 
 function FeatureCard({ title, desc }: Feature) {
   return (
-    <div className="rounded-[24px] border border-white/10 bg-white/[0.035] p-6 transition hover:-translate-y-0.5 hover:border-white/16 hover:bg-white/[0.05]">
-      <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.045]">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="text-white/90">
+    <div className="rounded-[24px] border border-[var(--border)] bg-[var(--card)] p-6 alamin-card-hover">
+      <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)]">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="text-[var(--foreground-soft)]">
           <path
             d="M12 3L19 7V17L12 21L5 17V7L12 3Z"
             stroke="currentColor"
@@ -414,17 +483,17 @@ function FeatureCard({ title, desc }: Feature) {
           />
         </svg>
       </div>
-      <div className="mt-5 text-lg font-semibold text-white">{title}</div>
-      <div className="mt-3 text-sm leading-7 text-white/62">{desc}</div>
+      <div className="mt-5 text-lg font-semibold text-[var(--foreground)]">{title}</div>
+      <div className="mt-3 text-sm leading-7 text-[var(--foreground-muted)]">{desc}</div>
     </div>
   );
 }
 
 function SecurityItem({ title, desc }: { title: string; desc: string }) {
   return (
-    <div className="rounded-[20px] border border-white/10 bg-white/[0.035] p-4">
-      <div className="text-sm font-semibold text-white">{title}</div>
-      <div className="mt-1 text-sm leading-6 text-white/62">{desc}</div>
+    <div className="rounded-[20px] border border-[var(--border)] bg-[var(--card)] p-4">
+      <div className="text-sm font-semibold text-[var(--foreground)]">{title}</div>
+      <div className="mt-1 text-sm leading-6 text-[var(--foreground-muted)]">{desc}</div>
     </div>
   );
 }
@@ -443,26 +512,32 @@ function PriceCard({
   return (
     <div
       className={[
-        "relative overflow-hidden rounded-[28px] border p-6 shadow-[0_20px_40px_rgba(0,0,0,0.28)]",
+        "relative overflow-hidden rounded-[28px] border p-6 alamin-shadow",
         highlight
-          ? "border-[#A78BFA]/35 bg-[linear-gradient(180deg,rgba(124,58,237,0.2),rgba(255,255,255,0.06))]"
-          : "border-white/10 bg-white/[0.04]",
+          ? "border-[var(--border-active)] bg-[linear-gradient(180deg,rgba(109,94,252,0.18),rgba(255,255,255,0.04))]"
+          : "border-[var(--border)] bg-[var(--card)]",
       ].join(" ")}
     >
       {badge ? (
-        <div className="absolute top-4 right-4 rounded-full border border-white/14 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/80">
+        <div className="absolute top-4 right-4 rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--foreground-soft)]">
           {badge}
         </div>
       ) : null}
 
-      <div className="text-sm font-semibold uppercase tracking-[0.18em] text-white/45">{title}</div>
-      <div className="mt-4 text-3xl font-semibold tracking-tight text-white">{price}</div>
-      <div className="mt-3 min-h-[52px] text-sm leading-6 text-white/62">{subtitle}</div>
+      <div className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
+        {title}
+      </div>
+      <div className="mt-4 text-3xl font-semibold tracking-tight text-[var(--foreground)]">
+        {price}
+      </div>
+      <div className="mt-3 min-h-[52px] text-sm leading-6 text-[var(--foreground-muted)]">
+        {subtitle}
+      </div>
 
-      <ul className="mt-6 space-y-3 text-sm text-white/72">
+      <ul className="mt-6 space-y-3 text-sm text-[var(--foreground-soft)]">
         {bullets.map((bullet) => (
           <li key={bullet} className="flex gap-3">
-            <span className="mt-1 h-2 w-2 rounded-full bg-[#22D3EE]" />
+            <span className="mt-1 h-2 w-2 rounded-full bg-[var(--accent-2)]" />
             <span>{bullet}</span>
           </li>
         ))}
@@ -474,8 +549,8 @@ function PriceCard({
           className={[
             "inline-flex h-12 w-full items-center justify-center rounded-full text-sm font-semibold transition",
             highlight
-              ? "bg-white text-[#07090D] hover:bg-white/92"
-              : "border border-white/14 bg-white/[0.04] text-white hover:border-white/22 hover:bg-white/[0.08]",
+              ? "bg-[var(--foreground)] text-[var(--background)] hover:opacity-92"
+              : "border border-[var(--border)] bg-[var(--button-secondary-bg)] text-[var(--foreground)] hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]",
           ].join(" ")}
         >
           {cta}

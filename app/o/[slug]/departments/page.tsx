@@ -9,6 +9,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import ProgressBar from "@/components/ui/ProgressBar";
 import SectionCard from "@/components/ui/SectionCard";
 import StatusBadge from "@/components/ui/StatusBadge";
+import StatCard from "@/components/ui/StatCard";
 
 type DashboardDepartment = {
   department_id?: string;
@@ -98,6 +99,23 @@ function normalizeDepartmentName(name: string) {
   return name.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
+function cardTone(score: number) {
+  if (score >= 85) return "success" as const;
+  if (score >= 60) return "warning" as const;
+  return "danger" as const;
+}
+
+function buttonClass(kind: "primary" | "secondary" | "danger") {
+  switch (kind) {
+    case "primary":
+      return "inline-flex h-11 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--foreground)] px-5 text-sm font-semibold text-[var(--background)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50";
+    case "danger":
+      return "inline-flex h-10 items-center justify-center rounded-full border border-red-500/20 bg-red-500/10 px-4 text-sm font-semibold text-red-700 transition hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-50 dark:text-red-100";
+    default:
+      return "inline-flex h-11 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-5 text-sm font-medium text-[var(--foreground)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)] disabled:cursor-not-allowed disabled:opacity-50";
+  }
+}
+
 export default function DepartmentsPage() {
   const params = useParams<{ slug: string }>();
   const router = useRouter();
@@ -107,6 +125,7 @@ export default function DepartmentsPage() {
 
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState<string | null>(null);
+  const [okMsg, setOkMsg] = useState<string | null>(null);
 
   const [cycle, setCycle] = useState<DashboardResponse["cycle"]>(null);
   const [dashboardDepartments, setDashboardDepartments] = useState<DashboardDepartment[]>([]);
@@ -131,6 +150,7 @@ export default function DepartmentsPage() {
 
   const load = useCallback(async () => {
     setMsg(null);
+    setOkMsg(null);
     setLoading(true);
 
     try {
@@ -158,13 +178,13 @@ export default function DepartmentsPage() {
 
       if (!dashboardRes.ok || !dashboardParsed || dashboardParsed.ok !== true) {
         throw new Error(
-          dashboardParsed?.error || dashboardRaw || `Failed dashboard load (HTTP ${dashboardRes.status})`
+          dashboardParsed?.error || dashboardRaw || `Failed dashboard load (HTTP ${dashboardRes.status})`,
         );
       }
 
       if (!registryRes.ok || !registryParsed || registryParsed.ok !== true) {
         throw new Error(
-          registryParsed?.error || registryRaw || `Failed departments load (HTTP ${registryRes.status})`
+          registryParsed?.error || registryRaw || `Failed departments load (HTTP ${registryRes.status})`,
         );
       }
 
@@ -191,20 +211,12 @@ export default function DepartmentsPage() {
       const maybeId = String(item.department_id ?? item.id ?? "").trim();
       const maybeName = String(item.department_name ?? item.name ?? "").trim();
 
-      if (maybeId) {
-        metricById.set(maybeId, item);
-      }
-
-      if (maybeName) {
-        metricByName.set(normalizeDepartmentName(maybeName), item);
-      }
+      if (maybeId) metricById.set(maybeId, item);
+      if (maybeName) metricByName.set(normalizeDepartmentName(maybeName), item);
     }
 
     const cards: DepartmentCard[] = registry.map((dept) => {
-      const matched =
-        metricById.get(dept.id) ??
-        metricByName.get(normalizeDepartmentName(dept.name));
-
+      const matched = metricById.get(dept.id) ?? metricByName.get(normalizeDepartmentName(dept.name));
       const score = scoreValue(matched?.department_score ?? matched?.score);
       const label = matched?.label ?? healthFromPerformance(score);
 
@@ -225,6 +237,19 @@ export default function DepartmentsPage() {
 
   const cycleText = cycle ? `Q${cycle.quarter} ${cycle.year} · ${cycle.status}` : "No active cycle";
 
+  const stats = useMemo(() => {
+    const total = ranked.length;
+    const avgScore = total
+      ? Math.round(ranked.reduce((sum, item) => sum + item.score, 0) / total)
+      : 0;
+
+    const healthy = ranked.filter((item) => item.score >= 85).length;
+    const atRisk = ranked.filter((item) => item.score >= 60 && item.score < 85).length;
+    const critical = ranked.filter((item) => item.score < 60).length;
+
+    return { total, avgScore, healthy, atRisk, critical };
+  }, [ranked]);
+
   const handleCreateDepartment = useCallback(async () => {
     const name = newDepartmentName.trim();
     if (!name) {
@@ -233,6 +258,7 @@ export default function DepartmentsPage() {
     }
 
     setMsg(null);
+    setOkMsg(null);
     setSavingDepartment(true);
 
     try {
@@ -256,6 +282,7 @@ export default function DepartmentsPage() {
       }
 
       setNewDepartmentName("");
+      setOkMsg(`Department "${name}" created.`);
       await load();
     } catch (e: unknown) {
       setMsg(getErrorMessage(e, "Failed to create department"));
@@ -267,11 +294,12 @@ export default function DepartmentsPage() {
   const handleDeleteDepartment = useCallback(
     async (departmentId: string, departmentName: string) => {
       const confirmed = window.confirm(
-        `Delete department "${departmentName}"?\n\nThis will be blocked if the department is still linked to KPIs or objectives.`
+        `Delete department "${departmentName}"?\n\nThis will be blocked if the department is still linked to KPIs, objectives, or other data.`,
       );
       if (!confirmed) return;
 
       setMsg(null);
+      setOkMsg(null);
       setDeletingDepartmentId(departmentId);
 
       try {
@@ -294,6 +322,7 @@ export default function DepartmentsPage() {
           throw new Error(parsed?.error || raw || `Failed to delete department (HTTP ${res.status})`);
         }
 
+        setOkMsg(`Department "${departmentName}" deleted.`);
         await load();
       } catch (e: unknown) {
         setMsg(getErrorMessage(e, "Failed to delete department"));
@@ -301,148 +330,232 @@ export default function DepartmentsPage() {
         setDeletingDepartmentId(null);
       }
     },
-    [ensureAuth, load, orgSlug]
+    [ensureAuth, load, orgSlug],
   );
 
   return (
-    <AppShell slug={orgSlug} sessionEmail={sessionEmail}>
+    <AppShell
+      slug={orgSlug}
+      sessionEmail={sessionEmail}
+      topActions={
+        <div className="flex items-center gap-3">
+          <button type="button" onClick={() => void load()} className={buttonClass("secondary")}>
+            Refresh
+          </button>
+          {canManage ? (
+            <button
+              type="button"
+              onClick={() => {
+                const el = document.getElementById("department-create-input");
+                el?.focus();
+              }}
+              className={buttonClass("primary")}
+            >
+              New department
+            </button>
+          ) : null}
+        </div>
+      }
+    >
       <AppPageHeader
         eyebrow={cycleText}
         title="Departments"
-        description="Department-level performance view showing score, KPI count, and concentration of risk across the active cycle."
-        actions={
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => void load()}
-              className="rounded-2xl border border-white/12 bg-white/6 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/10"
-            >
-              Refresh
-            </button>
-          </div>
-        }
+        description="Manage the organization structure and track department-level performance, KPI concentration, and execution risk across the active cycle."
       />
 
-      {msg ? (
-        <div className="mb-6 rounded-[20px] border border-red-400/20 bg-red-400/8 px-5 py-4 text-sm text-red-100">
-          {msg}
+      {(msg || okMsg) && (
+        <div className="mb-6 grid gap-3">
+          {msg ? (
+            <div className="rounded-[20px] border border-red-500/20 bg-red-500/10 px-5 py-4 text-sm text-red-700 dark:text-red-100">
+              {msg}
+            </div>
+          ) : null}
+          {okMsg ? (
+            <div className="rounded-[20px] border border-emerald-500/20 bg-emerald-500/10 px-5 py-4 text-sm text-emerald-700 dark:text-emerald-100">
+              {okMsg}
+            </div>
+          ) : null}
         </div>
-      ) : null}
+      )}
 
-      <SectionCard
-        title="Department Management"
-        subtitle={
-          canManage
-            ? "Create and delete departments for this organization."
-            : "You can view departments, but only org admins can manage them."
-        }
-      >
-        {loading ? (
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,420px)_1fr]">
-            <div className="h-48 animate-pulse rounded-[20px] border border-white/10 bg-white/5" />
-            <div className="h-48 animate-pulse rounded-[20px] border border-white/10 bg-white/5" />
-          </div>
-        ) : (
-          <div className="grid gap-5 lg:grid-cols-[minmax(0,420px)_1fr]">
-            <div className="rounded-[22px] border border-white/10 bg-white/5 p-5">
-              <div className="text-base font-bold text-white">Create department</div>
-              <div className="mt-1 text-sm text-white/50">
-                Add a new department that can later own objectives and KPIs.
-              </div>
-
-              <div className="mt-5">
-                <label className="mb-2 block text-sm font-medium text-white/80">Department name</label>
-                <input
-                  value={newDepartmentName}
-                  onChange={(e) => setNewDepartmentName(e.target.value)}
-                  placeholder="e.g. Finance"
-                  disabled={!canManage || savingDepartment}
-                  className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/25 focus:border-white/20"
-                />
-              </div>
-
-              <div className="mt-4 flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => void handleCreateDepartment()}
-                  disabled={!canManage || savingDepartment || !newDepartmentName.trim()}
-                  className="rounded-2xl border border-white/12 bg-white px-4 py-2.5 text-sm font-semibold text-black transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {savingDepartment ? "Creating..." : "Create department"}
-                </button>
-
-                {!canManage ? (
-                  <span className="text-xs text-white/40">Admin access required</span>
-                ) : null}
-              </div>
+      <section className="mb-6 overflow-hidden rounded-[30px] border border-[var(--border)] bg-[var(--background-panel)] p-6 alamin-shadow">
+        <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+          <div>
+            <div className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--foreground-faint)]">
+              <span className="h-2 w-2 rounded-full bg-[var(--accent-2)]" />
+              Department performance layer
             </div>
 
-            <div className="rounded-[22px] border border-white/10 bg-white/5 p-5">
-              <div className="text-base font-bold text-white">Current departments</div>
-              <div className="mt-1 text-sm text-white/50">
-                Delete only departments that are no longer linked to active data.
-              </div>
+            <h2 className="mt-5 text-3xl font-black tracking-[-0.04em] text-[var(--foreground)]">
+              See which departments are healthy, slipping, or overloaded.
+            </h2>
 
-              {registry.length ? (
-                <div className="mt-5 space-y-3">
-                  {registry.map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex items-center justify-between gap-4 rounded-2xl border border-white/8 bg-black/15 px-4 py-3"
+            <p className="mt-4 max-w-3xl text-base leading-7 text-[var(--foreground-muted)]">
+              This page combines department setup with live scorecards so leadership can manage the
+              structure and immediately see where KPI risk is concentrated.
+            </p>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <StatCard
+              title="Departments"
+              value={stats.total}
+              hint="Registered in the organization"
+            />
+            <StatCard
+              title="Average score"
+              value={numberFmt(stats.avgScore)}
+              hint="Across all departments"
+              tone={cardTone(stats.avgScore)}
+            />
+            <StatCard
+              title="Healthy"
+              value={stats.healthy}
+              hint="Departments on track"
+              tone="success"
+            />
+            <StatCard
+              title="Needs attention"
+              value={stats.atRisk + stats.critical}
+              hint={`${stats.atRisk} at risk · ${stats.critical} critical`}
+              tone="warning"
+            />
+          </div>
+        </div>
+      </section>
+
+      <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+        <SectionCard
+          title="Department management"
+          subtitle={
+            canManage
+              ? "Create and delete departments for this organization."
+              : "You can view departments, but only organization admins can manage them."
+          }
+          className="bg-[var(--background-panel)]"
+        >
+          {loading ? (
+            <div className="space-y-4">
+              <div className="h-36 animate-pulse rounded-[22px] border border-[var(--border)] bg-[var(--card)]" />
+              <div className="h-16 animate-pulse rounded-[18px] border border-[var(--border)] bg-[var(--card)]" />
+              <div className="h-16 animate-pulse rounded-[18px] border border-[var(--border)] bg-[var(--card)]" />
+            </div>
+          ) : (
+            <div className="space-y-5">
+              <div className="rounded-[22px] border border-[var(--border)] bg-[var(--card)] p-5">
+                <div className="text-base font-bold text-[var(--foreground)]">Create department</div>
+                <div className="mt-1 text-sm text-[var(--foreground-muted)]">
+                  Add a department that can later own KPIs, objectives, OKRs, and tasks.
+                </div>
+
+                <div className="mt-5 grid gap-3">
+                  <label className="grid gap-2">
+                    <span className="text-sm font-medium text-[var(--foreground-soft)]">
+                      Department name
+                    </span>
+                    <input
+                      id="department-create-input"
+                      value={newDepartmentName}
+                      onChange={(e) => setNewDepartmentName(e.target.value)}
+                      placeholder="e.g. Finance"
+                      disabled={!canManage || savingDepartment}
+                      className="h-12 w-full rounded-2xl border border-[var(--border)] bg-[var(--background-elevated)] px-4 text-[var(--foreground)] outline-none placeholder:text-[var(--foreground-faint)] transition focus:border-[var(--border-strong)]"
+                    />
+                  </label>
+
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => void handleCreateDepartment()}
+                      disabled={!canManage || savingDepartment || !newDepartmentName.trim()}
+                      className={buttonClass("primary")}
                     >
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold text-white">{item.name}</div>
-                      </div>
+                      {savingDepartment ? "Creating..." : "Create department"}
+                    </button>
 
-                      <button
-                        type="button"
-                        onClick={() => void handleDeleteDepartment(item.id, item.name)}
-                        disabled={!canManage || deletingDepartmentId === item.id}
-                        className="rounded-2xl border border-red-400/20 bg-red-400/8 px-4 py-2 text-sm font-medium text-red-100 transition hover:bg-red-400/12 disabled:cursor-not-allowed disabled:opacity-50"
+                    {!canManage ? (
+                      <span className="text-xs text-[var(--foreground-faint)]">
+                        Admin access required
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-[22px] border border-[var(--border)] bg-[var(--card)] p-5">
+                <div className="text-base font-bold text-[var(--foreground)]">Current departments</div>
+                <div className="mt-1 text-sm text-[var(--foreground-muted)]">
+                  Delete only departments that are no longer connected to active data.
+                </div>
+
+                {registry.length ? (
+                  <div className="mt-5 space-y-3">
+                    {registry.map((item) => (
+                      <div
+                        key={item.id}
+                        className="flex items-center justify-between gap-4 rounded-[18px] border border-[var(--border)] bg-[var(--card-subtle)] px-4 py-3"
                       >
-                        {deletingDepartmentId === item.id ? "Deleting..." : "Delete"}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="mt-5 rounded-2xl border border-white/8 bg-black/15 px-4 py-8 text-center text-sm text-white/45">
-                  No departments created yet.
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </SectionCard>
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-semibold text-[var(--foreground)]">
+                            {item.name}
+                          </div>
+                        </div>
 
-      <SectionCard title="Department Scorecards" subtitle="Ranked by current performance">
-        {loading ? (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div
-                key={i}
-                className="h-52 animate-pulse rounded-[20px] border border-white/10 bg-white/5"
-              />
-            ))}
-          </div>
-        ) : ranked.length ? (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {ranked.map((d) => {
-              return (
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteDepartment(item.id, item.name)}
+                          disabled={!canManage || deletingDepartmentId === item.id}
+                          className={buttonClass("danger")}
+                        >
+                          {deletingDepartmentId === item.id ? "Deleting..." : "Delete"}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-5 rounded-[18px] border border-[var(--border)] bg-[var(--card-subtle)] px-4 py-8 text-center text-sm text-[var(--foreground-faint)]">
+                    No departments created yet.
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </SectionCard>
+
+        <SectionCard
+          title="Department scorecards"
+          subtitle="Ranked by current performance and KPI distribution"
+          className="bg-[var(--background-panel)]"
+        >
+          {loading ? (
+            <div className="grid gap-4 md:grid-cols-2">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="h-64 animate-pulse rounded-[22px] border border-[var(--border)] bg-[var(--card)]"
+                />
+              ))}
+            </div>
+          ) : ranked.length ? (
+            <div className="grid gap-4 md:grid-cols-2">
+              {ranked.map((d) => (
                 <div
                   key={d.id}
-                  className="rounded-[22px] border border-white/10 bg-white/5 p-5"
+                  className="rounded-[22px] border border-[var(--border)] bg-[var(--card)] p-5 alamin-shadow"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <div className="text-lg font-bold text-white">{d.name}</div>
+                      <div className="text-lg font-bold text-[var(--foreground)]">{d.name}</div>
                       <div className="mt-2">
                         <StatusBadge tone={toneFromLabel(d.label)}>{d.label}</StatusBadge>
                       </div>
                     </div>
+
                     <div className="text-right">
-                      <div className="text-3xl font-black text-white">{numberFmt(d.score)}</div>
-                      <div className="text-xs text-white/35">Score</div>
+                      <div className="text-3xl font-black text-[var(--foreground)]">
+                        {numberFmt(d.score)}
+                      </div>
+                      <div className="text-xs text-[var(--foreground-faint)]">Score</div>
                     </div>
                   </div>
 
@@ -451,53 +564,33 @@ export default function DepartmentsPage() {
                   </div>
 
                   <div className="mt-5 grid grid-cols-2 gap-3">
-                    <div className="rounded-2xl border border-white/8 bg-black/15 p-3">
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-white/38">
-                        Total KPIs
-                      </div>
-                      <div className="mt-2 text-lg font-bold text-white">
-                        {numberFmt(d.total_kpis)}
-                      </div>
-                    </div>
-
-                    <div className="rounded-2xl border border-white/8 bg-black/15 p-3">
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-white/38">
-                        Healthy
-                      </div>
-                      <div className="mt-2 text-lg font-bold text-white">
-                        {numberFmt(d.healthy_kpis)}
-                      </div>
-                    </div>
-
-                    <div className="rounded-2xl border border-white/8 bg-black/15 p-3">
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-white/38">
-                        At Risk
-                      </div>
-                      <div className="mt-2 text-lg font-bold text-white">
-                        {numberFmt(d.at_risk_kpis)}
-                      </div>
-                    </div>
-
-                    <div className="rounded-2xl border border-white/8 bg-black/15 p-3">
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-white/38">
-                        Critical
-                      </div>
-                      <div className="mt-2 text-lg font-bold text-white">
-                        {numberFmt(d.critical_kpis)}
-                      </div>
-                    </div>
+                    <MetricTile label="Total KPIs" value={numberFmt(d.total_kpis)} />
+                    <MetricTile label="Healthy" value={numberFmt(d.healthy_kpis)} />
+                    <MetricTile label="At Risk" value={numberFmt(d.at_risk_kpis)} />
+                    <MetricTile label="Critical" value={numberFmt(d.critical_kpis)} />
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        ) : (
-          <EmptyState
-            title="No departments available"
-            description="Create departments to populate this view."
-          />
-        )}
-      </SectionCard>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              title="No departments available"
+              description="Create departments to populate this view."
+            />
+          )}
+        </SectionCard>
+      </div>
     </AppShell>
+  );
+}
+
+function MetricTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-[18px] border border-[var(--border)] bg-[var(--card-subtle)] p-3">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--foreground-faint)]">
+        {label}
+      </div>
+      <div className="mt-2 text-lg font-bold text-[var(--foreground)]">{value}</div>
+    </div>
   );
 }

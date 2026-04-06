@@ -8,15 +8,15 @@ type StatusBadgeProps = {
 function classes(tone: StatusTone) {
   switch (tone) {
     case "success":
-      return "border-emerald-400/20 bg-emerald-400/10 text-emerald-200";
+      return "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200";
     case "warning":
-      return "border-amber-400/20 bg-amber-400/10 text-amber-200";
+      return "border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-200";
     case "danger":
-      return "border-red-400/20 bg-red-400/10 text-red-200";
+      return "border-red-500/20 bg-red-500/10 text-red-700 dark:text-red-200";
     case "info":
-      return "border-sky-400/20 bg-sky-400/10 text-sky-200";
+      return "border-sky-500/20 bg-sky-500/10 text-sky-700 dark:text-sky-200";
     default:
-      return "border-white/12 bg-white/10 text-white/70";
+      return "border-[var(--border)] bg-[var(--button-secondary-bg)] text-[var(--foreground-soft)]";
   }
 }
 

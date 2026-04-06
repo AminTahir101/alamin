@@ -1,8 +1,13 @@
-// app/api/o/[slug]/onboarding/route.ts
-import { NextResponse, type NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
+
+type DepartmentHeadInput = {
+  departmentName: string;
+  headName: string;
+  headEmail: string;
+};
 
 type OnboardingBody = {
   companyName: string;
@@ -13,349 +18,716 @@ type OnboardingBody = {
   kpis: Array<{
     title: string;
     departmentName: string;
-    unit?: string; // UI-only
+    unit: string;
     target: number;
     current: number;
-    weight?: number;
-    direction?: string;
-    is_active?: boolean;
-    notes?: string;
   }>;
-};
-
-type SbErrorLike = { message?: string; code?: string; details?: string | null; hint?: string | null };
-
-type OnboardingResponse = {
-  ok: boolean;
-  org?: { id: string; slug: string; name: string };
-  cycle?: { id: string; year: number; quarter: number; status: string } | null;
-  created?: { departments: number; kpis: number; history: number };
-  error?: string;
-  detail?: unknown;
-  debug?: {
-    pathname?: string | null;
-    paramSlug?: string | null;
-    derivedSlug?: string | null;
+  personal?: {
+    firstName: string;
+    lastName: string;
+    email: string;
+  };
+  company?: {
+    registrationNumber?: string;
+    industry?: string;
+    country?: string;
+    employeeCount?: number | null;
+  };
+  aiSetup?: {
+    mainStrategy?: string;
+    departmentHeads?: DepartmentHeadInput[];
   };
 };
 
-function json(data: OnboardingResponse, status = 200) {
-  return NextResponse.json(data, { status, headers: { "Cache-Control": "no-store" } });
-}
-function err(status: number, message: string, detail?: unknown, debug?: OnboardingResponse["debug"]) {
-  return json({ ok: false, error: message, detail, debug }, status);
-}
-function bearer(req: NextRequest): string | null {
-  const h = req.headers.get("authorization") ?? "";
-  const m = /^Bearer\s+(.+)$/i.exec(h);
-  return m?.[1] ?? null;
-}
-function clean(v: unknown): string {
-  return String(v ?? "").trim();
-}
-function norm(v: unknown): string {
-  return clean(v).toLowerCase();
-}
-
-/**
- * Expected path: /api/o/:slug/onboarding
- */
-function slugFromUrl(req: NextRequest): string | null {
-  try {
-    const parts = req.nextUrl.pathname.split("/").filter(Boolean);
-    const oIdx = parts.indexOf("o");
-    if (oIdx === -1) return null;
-
-    const maybeSlug = parts[oIdx + 1] ?? "";
-    const maybeTail = parts[oIdx + 2] ?? "";
-    if (!maybeSlug) return null;
-    if (maybeTail !== "onboarding") return null;
-
-    return decodeURIComponent(maybeSlug).trim();
-  } catch {
-    return null;
-  }
-}
-
-function env() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
-
-  if (!supabaseUrl || !anonKey) {
-    return { ok: false as const, status: 500, error: "Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY" };
-  }
-  if (!serviceRoleKey) {
-    return { ok: false as const, status: 500, error: "Missing SUPABASE_SERVICE_ROLE_KEY" };
-  }
-  return { ok: true as const, supabaseUrl, anonKey, serviceRoleKey };
-}
-
-function pad2(n: number) {
-  return n < 10 ? `0${n}` : String(n);
-}
-function toIsoDateUTC(d: Date) {
-  return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
-}
-function quarterDates(year: number, quarter: number): { starts_on: string; ends_on: string } {
-  const startMonth0 = (quarter - 1) * 3;
-  const starts = new Date(Date.UTC(year, startMonth0, 1));
-  const firstOfNext = new Date(Date.UTC(year, startMonth0 + 3, 1));
-  const ends = new Date(firstOfNext.getTime() - 24 * 60 * 60 * 1000);
-  return { starts_on: toIsoDateUTC(starts), ends_on: toIsoDateUTC(ends) };
-}
-
-type CleanKpi = {
-  title: string;
-  departmentName: string; // original for error messages
-  departmentNameNorm: string;
-  target_value: number;
-  current_value: number;
-  weight: number;
-  is_active: boolean;
-  notes: string;
+type OrgRow = {
+  id: string;
+  slug: string;
+  name: string;
+  settings?: Record<string, unknown> | null;
 };
 
-function sbErr(e: unknown): SbErrorLike {
-  const x = e as SbErrorLike | null;
-  return { message: x?.message, code: x?.code, details: x?.details ?? null, hint: x?.hint ?? null };
+type CycleRow = {
+  id: string;
+  year: number;
+  quarter: number;
+  status: string;
+};
+
+type DepartmentRow = {
+  id: string;
+  name: string;
+};
+
+function json(data: unknown, status = 200) {
+  return NextResponse.json(data, { status });
 }
 
-async function getSlug(req: NextRequest, context: { params: Promise<{ slug: string }> }) {
-  const p = await context.params;
-  const paramSlug = clean(p?.slug);
-  const derivedSlug = slugFromUrl(req) ?? "";
-  const slug = (paramSlug || derivedSlug).trim();
-  return { slug, paramSlug, derivedSlug };
+function getErrorMessage(err: unknown, fallback: string) {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "string") return err;
+  return fallback;
 }
 
-export async function GET(req: NextRequest, context: { params: Promise<{ slug: string }> }) {
-  const { slug, paramSlug, derivedSlug } = await getSlug(req, context);
-
-  if (!slug) {
-    return err(
-      400,
-      "slug is required",
-      "Call this as /api/o/:slug/onboarding",
-      { paramSlug: paramSlug || null, derivedSlug: derivedSlug || null, pathname: req.nextUrl.pathname }
-    );
-  }
-
-  return json({ ok: true, detail: { route: "onboarding", slug } }, 200);
+function normalizeSlug(input: string) {
+  return input
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9-_]/g, "")
+    .replace(/-+/g, "-");
 }
 
-export async function POST(req: NextRequest, context: { params: Promise<{ slug: string }> }) {
-  const { slug, paramSlug, derivedSlug } = await getSlug(req, context);
+function quarterDates(year: number, quarter: number) {
+  const q = Math.max(1, Math.min(4, quarter));
+  const startMonth = (q - 1) * 3;
+  const start = new Date(Date.UTC(year, startMonth, 1));
+  const end = new Date(Date.UTC(year, startMonth + 3, 0));
 
-  if (!slug) {
-    return err(
-      400,
-      "slug is required",
-      "This route must be called as /api/o/:slug/onboarding",
-      { paramSlug: paramSlug || null, derivedSlug: derivedSlug || null, pathname: req.nextUrl.pathname }
-    );
-  }
+  const toDate = (d: Date) => d.toISOString().slice(0, 10);
 
-  const e = env();
-  if (!e.ok) return err(e.status, e.error);
+  return {
+    starts_on: toDate(start),
+    ends_on: toDate(end),
+    name: `Q${q} ${year}`,
+  };
+}
 
-  const token = bearer(req);
-  if (!token) return err(401, "Missing Authorization: Bearer <token>");
+function toFiniteNumber(value: unknown, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
 
-  // Validate token -> userId (anon client)
-  const authed = createClient(e.supabaseUrl, e.anonKey, {
-    global: { headers: { Authorization: `Bearer ${token}` } },
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
+function cleanText(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
 
-  const { data: userData, error: userErr } = await authed.auth.getUser();
-  if (userErr || !userData.user) return err(401, "Invalid/expired access token", userErr?.message ?? null);
+function cleanEmail(value: unknown) {
+  return cleanText(value).toLowerCase();
+}
 
-  const userId = userData.user.id;
-  if (!userId) return err(401, "No userId extracted from token");
+function dedupeStrings(values: string[]) {
+  return Array.from(new Set(values.map((v) => v.trim()).filter(Boolean)));
+}
 
-  let body: OnboardingBody;
+function mergeJson(
+  base: Record<string, unknown> | null | undefined,
+  patch: Record<string, unknown>
+) {
+  return {
+    ...(base ?? {}),
+    ...patch,
+  };
+}
+
+export async function POST(
+  req: NextRequest,
+  context: { params: Promise<{ slug: string }> }
+) {
   try {
-    body = (await req.json()) as OnboardingBody;
-  } catch {
-    return err(400, "Invalid JSON body");
-  }
+    const { slug: rawSlug } = await context.params;
+    const routeSlug = normalizeSlug(rawSlug);
 
-  if (clean(body.orgSlug) !== slug) return err(400, "Body orgSlug must match URL slug");
-  if (!clean(body.companyName)) return err(400, "companyName is required");
-
-  const year = Number(body.year);
-  const quarter = Number(body.quarter);
-  if (!Number.isFinite(year) || year < 2000) return err(400, "year is invalid");
-  if (![1, 2, 3, 4].includes(quarter)) return err(400, "quarter must be 1-4");
-
-  // Normalize departments, compare case-insensitive
-  const deptOriginal = (body.departments || []).map((d) => clean(d.name)).filter(Boolean);
-  if (!deptOriginal.length) return err(400, "At least 1 department is required");
-
-  const deptNormToOriginal = new Map<string, string>();
-  for (const d of deptOriginal) {
-    const dn = norm(d);
-    if (!dn) continue;
-    if (!deptNormToOriginal.has(dn)) deptNormToOriginal.set(dn, d);
-  }
-  const deptSetNorm = new Set<string>(Array.from(deptNormToOriginal.keys()));
-  if (!deptSetNorm.size) return err(400, "At least 1 department is required");
-
-  const kpis: CleanKpi[] = (body.kpis || [])
-    .map((k) => {
-      const title = clean(k.title);
-      const departmentName = clean(k.departmentName);
-      return {
-        title,
-        departmentName,
-        departmentNameNorm: norm(departmentName),
-        target_value: Number(k.target),
-        current_value: Number(k.current),
-        weight: k.weight == null ? 1 : Number(k.weight),
-        is_active: k.is_active == null ? true : Boolean(k.is_active),
-        notes: clean(k.notes),
-      };
-    })
-    .filter((k) => k.title && k.departmentNameNorm);
-
-  if (!kpis.length) return err(400, "At least 1 KPI is required");
-
-  for (const k of kpis) {
-    if (!deptSetNorm.has(k.departmentNameNorm)) {
-      return err(400, `KPI "${k.title}" department "${k.departmentName}" is not in departments list`);
+    if (!routeSlug) {
+      return json({ ok: false, error: "slug is required" }, 400);
     }
-    if (!Number.isFinite(k.target_value)) return err(400, `KPI "${k.title}" target is invalid`);
-    if (!Number.isFinite(k.current_value)) return err(400, `KPI "${k.title}" current is invalid`);
-    if (!Number.isFinite(k.weight) || k.weight <= 0) return err(400, `KPI "${k.title}" weight must be > 0`);
-  }
 
-  // Admin client (service role bypasses RLS)
-  const admin = createClient(e.supabaseUrl, e.serviceRoleKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
+    const body = (await req.json()) as OnboardingBody;
 
-  // 1) Create org if missing; otherwise update name ONLY
-  const { data: existingOrg, error: existingOrgErr } = await admin
-    .from("organizations")
-    .select("id, slug, name")
-    .eq("slug", slug)
-    .maybeSingle<{ id: string; slug: string; name: string }>();
+    const companyName = cleanText(body.companyName);
+    const bodySlug = normalizeSlug(body.orgSlug);
+    const orgSlug = bodySlug || routeSlug;
+    const year = toFiniteNumber(body.year, 0);
+    const quarter = toFiniteNumber(body.quarter, 0);
 
-  if (existingOrgErr) return err(500, "Failed to read organization", sbErr(existingOrgErr));
+    if (!companyName) {
+      return json({ ok: false, error: "companyName is required" }, 400);
+    }
 
-  let org: { id: string; slug: string; name: string } | null = null;
+    if (!orgSlug) {
+      return json({ ok: false, error: "orgSlug is required" }, 400);
+    }
 
-  if (!existingOrg) {
-    const ins = await admin
-      .from("organizations")
-      .insert({ slug, name: clean(body.companyName), created_by: userId })
-      .select("id, slug, name")
-      .single();
+    if (orgSlug !== routeSlug) {
+      return json({ ok: false, error: "Route slug and body orgSlug do not match" }, 400);
+    }
 
-    if (ins.error) return err(500, "Failed to create organization", sbErr(ins.error));
-    org = ins.data;
-  } else {
-    const upd = await admin
-      .from("organizations")
-      .update({ name: clean(body.companyName) })
-      .eq("id", existingOrg.id)
-      .select("id, slug, name")
-      .single();
+    if (year < 2000 || year > 2100) {
+      return json({ ok: false, error: "year is invalid" }, 400);
+    }
 
-    if (upd.error) return err(500, "Failed to update organization", sbErr(upd.error));
-    org = upd.data;
-  }
+    if (![1, 2, 3, 4].includes(quarter)) {
+      return json({ ok: false, error: "quarter must be 1 to 4" }, 400);
+    }
 
-  if (!org) return err(500, "Organization upsert returned null");
+    const authHeader = req.headers.get("authorization") ?? "";
+    const token = authHeader.startsWith("Bearer ")
+      ? authHeader.slice("Bearer ".length).trim()
+      : "";
 
-  // 2) Membership
-  await admin.from("organization_members").upsert(
-    { org_id: org.id, user_id: userId, role: "owner" },
-    { onConflict: "org_id,user_id" }
-  );
+    if (!token) {
+      return json({ ok: false, error: "Missing bearer token" }, 401);
+    }
 
-  // 3) Active cycle
-  const { starts_on, ends_on } = quarterDates(year, quarter);
-  await admin.from("quarterly_cycles").update({ status: "inactive" }).eq("org_id", org.id);
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-  const cycleUpsert = await admin
-    .from("quarterly_cycles")
-    .upsert(
-      { org_id: org.id, year, quarter, starts_on, ends_on, status: "active", created_by: userId },
-      { onConflict: "org_id,year,quarter" }
-    )
-    .select("id, year, quarter, status")
-    .single();
+    if (!supabaseUrl || !anonKey || !serviceRoleKey) {
+      return json(
+        {
+          ok: false,
+          error:
+            "Missing Supabase env. Required: NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY",
+        },
+        500
+      );
+    }
 
-  if (cycleUpsert.error) return err(500, "Failed to upsert quarterly cycle", sbErr(cycleUpsert.error));
-  const cycle = cycleUpsert.data;
-
-  // 4) Upsert departments (canonical/original names)
-  const deptRows = Array.from(deptNormToOriginal.values()).map((name) => ({ org_id: org.id, name, created_by: userId }));
-  const deptUpsert = await admin.from("departments").upsert(deptRows, { onConflict: "org_id,name" }).select("id, name");
-  if (deptUpsert.error) return err(500, "Failed to upsert departments", sbErr(deptUpsert.error));
-
-  const deptIdByNameNorm = new Map<string, string>();
-  for (const d of deptUpsert.data || []) deptIdByNameNorm.set(norm(d.name), d.id);
-
-  // 5) Upsert KPIs
-  const kpiRows = kpis.map((k) => ({
-    org_id: org.id,
-    cycle_id: cycle.id,
-    title: k.title,
-    department_id: deptIdByNameNorm.get(k.departmentNameNorm) ?? null,
-    target_value: k.target_value,
-    current_value: k.current_value,
-    weight: k.weight,
-    is_active: k.is_active,
-    created_by: userId,
-  }));
-
-  if (kpiRows.some((r) => !r.department_id)) return err(400, "Some KPIs reference a department that could not be resolved");
-
-  const kpiUpsert = await admin
-    .from("kpis")
-    .upsert(kpiRows, { onConflict: "org_id,cycle_id,title" })
-    .select("id, title, current_value, target_value");
-
-  if (kpiUpsert.error) return err(500, "Failed to upsert kpis", sbErr(kpiUpsert.error));
-
-  const kpiByTitle = new Map<string, { id: string; current_value: number; target_value: number }>();
-  for (const row of kpiUpsert.data || []) {
-    kpiByTitle.set(row.title, {
-      id: row.id,
-      current_value: Number(row.current_value),
-      target_value: Number(row.target_value),
+    const supabaseAuth = createClient(supabaseUrl, anonKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
     });
-  }
 
-  // 6) Insert KPI values history
-  const nowIso = new Date().toISOString();
-  const historyRows = kpis.map((k) => {
-    const saved = kpiByTitle.get(k.title);
-    return {
-      org_id: org.id,
-      kpi_id: saved?.id ?? null,
-      cycle_id: cycle.id,
-      recorded_at: nowIso,
-      current_value: saved ? saved.current_value : k.current_value,
-      target_value: saved ? saved.target_value : k.target_value,
-      source: "manual",
-      notes: k.notes || null,
-      recorded_by: userId,
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+
+    const {
+      data: { user },
+      error: authError,
+    } = await supabaseAuth.auth.getUser(token);
+
+    if (authError || !user) {
+      return json({ ok: false, error: "Unauthorized" }, 401);
+    }
+
+    const createdBy = user.id;
+
+    const personal = {
+      firstName: cleanText(body.personal?.firstName),
+      lastName: cleanText(body.personal?.lastName),
+      email: cleanEmail(body.personal?.email) || cleanEmail(user.email),
     };
-  });
 
-  if (historyRows.some((r) => !r.kpi_id)) return err(500, "Some KPI ids were not found after KPI upsert");
+    const company = {
+      registrationNumber: cleanText(body.company?.registrationNumber),
+      industry: cleanText(body.company?.industry),
+      country: cleanText(body.company?.country) || "Saudi Arabia",
+      employeeCount:
+        body.company?.employeeCount === null || body.company?.employeeCount === undefined
+          ? null
+          : toFiniteNumber(body.company.employeeCount, 0),
+    };
 
-  const historyInsert = await admin.from("kpi_values_history").insert(historyRows);
-  if (historyInsert.error) return err(500, "Failed to insert KPI values history", sbErr(historyInsert.error));
+    const aiSetup = {
+      mainStrategy: cleanText(body.aiSetup?.mainStrategy),
+      departmentHeads: Array.isArray(body.aiSetup?.departmentHeads)
+        ? body.aiSetup!.departmentHeads.map((item) => ({
+            departmentName: cleanText(item.departmentName),
+            headName: cleanText(item.headName),
+            headEmail: cleanEmail(item.headEmail),
+          }))
+        : [],
+    };
 
-  return json({
-    ok: true,
-    org,
-    cycle,
-    created: { departments: deptRows.length, kpis: kpiRows.length, history: historyRows.length },
-  });
+    const departmentNames = dedupeStrings(
+      Array.isArray(body.departments) ? body.departments.map((d) => cleanText(d.name)) : []
+    );
+
+    if (!departmentNames.length) {
+      return json({ ok: false, error: "At least one department is required" }, 400);
+    }
+
+    const kpis = Array.isArray(body.kpis) ? body.kpis : [];
+
+    for (const kpi of kpis) {
+      const title = cleanText(kpi.title);
+      const departmentName = cleanText(kpi.departmentName);
+      const unit = cleanText(kpi.unit);
+
+      if (!title) {
+        return json({ ok: false, error: "Each KPI must have a title" }, 400);
+      }
+      if (!departmentName) {
+        return json({ ok: false, error: `KPI "${title}" is missing departmentName` }, 400);
+      }
+      if (!departmentNames.includes(departmentName)) {
+        return json(
+          {
+            ok: false,
+            error: `KPI "${title}" references department "${departmentName}" which does not exist in departments`,
+          },
+          400
+        );
+      }
+      if (!unit) {
+        return json({ ok: false, error: `KPI "${title}" is missing unit` }, 400);
+      }
+      if (!Number.isFinite(Number(kpi.target)) || !Number.isFinite(Number(kpi.current))) {
+        return json({ ok: false, error: `KPI "${title}" has invalid target/current values` }, 400);
+      }
+    }
+
+    const { starts_on, ends_on, name: cycleName } = quarterDates(year, quarter);
+
+    // 1) Organization: create or update
+    const { data: existingOrg, error: existingOrgError } = await supabaseAdmin
+      .from("organizations")
+      .select("id, slug, name, settings")
+      .eq("slug", orgSlug)
+      .maybeSingle<OrgRow>();
+
+    if (existingOrgError) {
+      return json(
+        {
+          ok: false,
+          error: "Failed to load organization",
+          detail: existingOrgError.message,
+        },
+        500
+      );
+    }
+
+    let orgId = existingOrg?.id ?? "";
+    const onboardingSettings = {
+      onboarding: {
+        completed: true,
+        completed_at: new Date().toISOString(),
+        personal,
+        company,
+        aiSetup: {
+          mainStrategy: aiSetup.mainStrategy,
+          departmentHeads: aiSetup.departmentHeads,
+        },
+      },
+    };
+
+    if (!existingOrg) {
+      const { data: insertedOrg, error: insertOrgError } = await supabaseAdmin
+        .from("organizations")
+        .insert({
+          name: companyName,
+          slug: orgSlug,
+          created_by: createdBy,
+          cr_number: company.registrationNumber || null,
+          industry: company.industry || null,
+          employee_count: company.employeeCount,
+          country: company.country || "Saudi Arabia",
+          description: aiSetup.mainStrategy || null,
+          settings: onboardingSettings,
+        })
+        .select("id, slug, name, settings")
+        .single<OrgRow>();
+
+      if (insertOrgError || !insertedOrg) {
+        return json(
+          {
+            ok: false,
+            error: "Failed to create organization",
+            detail: insertOrgError?.message,
+          },
+          500
+        );
+      }
+
+      orgId = insertedOrg.id;
+    } else {
+      orgId = existingOrg.id;
+
+      const { error: updateOrgError } = await supabaseAdmin
+        .from("organizations")
+        .update({
+          name: companyName,
+          cr_number: company.registrationNumber || null,
+          industry: company.industry || null,
+          employee_count: company.employeeCount,
+          country: company.country || "Saudi Arabia",
+          description: aiSetup.mainStrategy || null,
+          settings: mergeJson(existingOrg.settings ?? {}, onboardingSettings),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", orgId);
+
+      if (updateOrgError) {
+        return json(
+          {
+            ok: false,
+            error: "Failed to update organization",
+            detail: updateOrgError.message,
+          },
+          500
+        );
+      }
+    }
+
+    // 2) Ensure owner membership
+    const { data: existingMembership, error: membershipLookupError } = await supabaseAdmin
+      .from("organization_members")
+      .select("org_id, user_id, role")
+      .eq("org_id", orgId)
+      .eq("user_id", createdBy)
+      .maybeSingle();
+
+    if (membershipLookupError) {
+      return json(
+        {
+          ok: false,
+          error: "Failed to load organization membership",
+          detail: membershipLookupError.message,
+        },
+        500
+      );
+    }
+
+    if (!existingMembership) {
+      const { error: insertMembershipError } = await supabaseAdmin
+        .from("organization_members")
+        .insert({
+          org_id: orgId,
+          user_id: createdBy,
+          role: "owner",
+          title: personal.firstName || personal.lastName
+            ? `${personal.firstName} ${personal.lastName}`.trim()
+            : "Owner",
+          joined_at: new Date().toISOString(),
+          is_active: true,
+        });
+
+      if (insertMembershipError) {
+        return json(
+          {
+            ok: false,
+            error: "Failed to create organization membership",
+            detail: insertMembershipError.message,
+          },
+          500
+        );
+      }
+    }
+
+    // 3) Cycle: create or update
+    const { data: existingCycle, error: cycleLookupError } = await supabaseAdmin
+      .from("quarterly_cycles")
+      .select("id, year, quarter, status")
+      .eq("org_id", orgId)
+      .eq("year", year)
+      .eq("quarter", quarter)
+      .maybeSingle<CycleRow>();
+
+    if (cycleLookupError) {
+      return json(
+        {
+          ok: false,
+          error: "Failed to load cycle",
+          detail: cycleLookupError.message,
+        },
+        500
+      );
+    }
+
+    let cycleId = existingCycle?.id ?? "";
+
+    if (!existingCycle) {
+      const { data: insertedCycle, error: insertCycleError } = await supabaseAdmin
+        .from("quarterly_cycles")
+        .insert({
+          org_id: orgId,
+          year,
+          quarter,
+          starts_on,
+          ends_on,
+          status: "active",
+          name: cycleName,
+          created_by: createdBy,
+        })
+        .select("id, year, quarter, status")
+        .single<CycleRow>();
+
+      if (insertCycleError || !insertedCycle) {
+        return json(
+          {
+            ok: false,
+            error: "Failed to create cycle",
+            detail: insertCycleError?.message,
+          },
+          500
+        );
+      }
+
+      cycleId = insertedCycle.id;
+    } else {
+      cycleId = existingCycle.id;
+
+      const { error: updateCycleError } = await supabaseAdmin
+        .from("quarterly_cycles")
+        .update({
+          starts_on,
+          ends_on,
+          status: "active",
+          name: cycleName,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", cycleId);
+
+      if (updateCycleError) {
+        return json(
+          {
+            ok: false,
+            error: "Failed to update cycle",
+            detail: updateCycleError.message,
+          },
+          500
+        );
+      }
+    }
+
+    // 4) Departments: insert missing ones
+    const { data: existingDepartments, error: departmentsLookupError } = await supabaseAdmin
+      .from("departments")
+      .select("id, name")
+      .eq("org_id", orgId)
+      .returns<DepartmentRow[]>();
+
+    if (departmentsLookupError) {
+      return json(
+        {
+          ok: false,
+          error: "Failed to load departments",
+          detail: departmentsLookupError.message,
+        },
+        500
+      );
+    }
+
+    const existingDepartmentMap = new Map(
+      (existingDepartments ?? []).map((d) => [d.name.toLowerCase(), d])
+    );
+
+    const missingDepartments = departmentNames.filter(
+      (name) => !existingDepartmentMap.has(name.toLowerCase())
+    );
+
+    if (missingDepartments.length > 0) {
+      const { error: insertDepartmentsError } = await supabaseAdmin.from("departments").insert(
+        missingDepartments.map((name) => ({
+          org_id: orgId,
+          name,
+          created_by: createdBy,
+          description: null,
+        }))
+      );
+
+      if (insertDepartmentsError) {
+        return json(
+          {
+            ok: false,
+            error: "Failed to create departments",
+            detail: insertDepartmentsError.message,
+          },
+          500
+        );
+      }
+    }
+
+    const { data: allDepartments, error: allDepartmentsError } = await supabaseAdmin
+      .from("departments")
+      .select("id, name")
+      .eq("org_id", orgId)
+      .returns<DepartmentRow[]>();
+
+    if (allDepartmentsError) {
+      return json(
+        {
+          ok: false,
+          error: "Failed to reload departments",
+          detail: allDepartmentsError.message,
+        },
+        500
+      );
+    }
+
+    const departmentMap = new Map(
+      (allDepartments ?? []).map((d) => [d.name.toLowerCase(), d.id])
+    );
+
+    // 5) KPIs: insert if missing by same title + department + cycle
+    if (kpis.length > 0) {
+      const departmentIds = Array.from(new Set(kpis.map((k) => departmentMap.get(k.departmentName.toLowerCase())).filter(Boolean))) as string[];
+
+      const { data: existingKpis, error: existingKpisError } = await supabaseAdmin
+        .from("kpis")
+        .select("id, title, department_id, cycle_id")
+        .eq("org_id", orgId)
+        .eq("cycle_id", cycleId)
+        .in("department_id", departmentIds);
+
+      if (existingKpisError) {
+        return json(
+          {
+            ok: false,
+            error: "Failed to load existing KPIs",
+            detail: existingKpisError.message,
+          },
+          500
+        );
+      }
+
+      const existingKpiKey = new Set(
+        (existingKpis ?? []).map(
+          (row: { title: string; department_id: string; cycle_id: string }) =>
+            `${row.title.toLowerCase()}::${row.department_id}::${row.cycle_id}`
+        )
+      );
+
+      const kpisToInsert = kpis
+        .map((kpi) => {
+          const departmentId = departmentMap.get(kpi.departmentName.toLowerCase());
+
+          if (!departmentId) return null;
+
+          const title = cleanText(kpi.title);
+          const unit = cleanText(kpi.unit);
+          const targetValue = Number(kpi.target);
+          const currentValue = Number(kpi.current);
+          const key = `${title.toLowerCase()}::${departmentId}::${cycleId}`;
+
+          if (existingKpiKey.has(key)) {
+            return null;
+          }
+
+          return {
+            org_id: orgId,
+            cycle_id: cycleId,
+            department_id: departmentId,
+            title,
+            unit: unit || null,
+            target_value: targetValue,
+            current_value: currentValue,
+            baseline_value: currentValue,
+            measurement_type: "number",
+            direction: "increase",
+            frequency: "monthly",
+            source: "manual",
+            created_by: createdBy,
+            description: null,
+          };
+        })
+        .filter(Boolean);
+
+      if (kpisToInsert.length > 0) {
+        const { error: insertKpisError } = await supabaseAdmin
+          .from("kpis")
+          .insert(kpisToInsert);
+
+        if (insertKpisError) {
+          return json(
+            {
+              ok: false,
+              error: "Failed to create KPIs",
+              detail: insertKpisError.message,
+            },
+            500
+          );
+        }
+      }
+
+      // 6) KPI history snapshots
+      const { data: insertedOrExistingKpis, error: refreshedKpisError } = await supabaseAdmin
+        .from("kpis")
+        .select("id, title, department_id, target_value, current_value")
+        .eq("org_id", orgId)
+        .eq("cycle_id", cycleId);
+
+      if (refreshedKpisError) {
+        return json(
+          {
+            ok: false,
+            error: "Failed to reload KPIs",
+            detail: refreshedKpisError.message,
+          },
+          500
+        );
+      }
+
+      const refreshedKpiMap = new Map(
+        (insertedOrExistingKpis ?? []).map(
+          (row: { id: string; title: string; department_id: string }) =>
+            [`${row.title.toLowerCase()}::${row.department_id}`, row.id]
+        )
+      );
+
+      const historyRows = kpis
+        .map((kpi) => {
+          const departmentId = departmentMap.get(kpi.departmentName.toLowerCase());
+          if (!departmentId) return null;
+
+          const kpiId = refreshedKpiMap.get(`${cleanText(kpi.title).toLowerCase()}::${departmentId}`);
+          if (!kpiId) return null;
+
+          return {
+            org_id: orgId,
+            kpi_id: kpiId,
+            cycle_id: cycleId,
+            current_value: Number(kpi.current),
+            target_value: Number(kpi.target),
+            source: "manual",
+            notes: "Seeded during onboarding",
+            recorded_by: createdBy,
+          };
+        })
+        .filter(Boolean);
+
+      if (historyRows.length > 0) {
+        const { error: historyInsertError } = await supabaseAdmin
+          .from("kpi_values_history")
+          .insert(historyRows);
+
+        if (historyInsertError) {
+          return json(
+            {
+              ok: false,
+              error: "Failed to create KPI history",
+              detail: historyInsertError.message,
+            },
+            500
+          );
+        }
+      }
+    }
+
+    return json({
+      ok: true,
+      org: {
+        id: orgId,
+        slug: orgSlug,
+        name: companyName,
+      },
+      cycle: {
+        id: cycleId,
+        year,
+        quarter,
+        name: cycleName,
+      },
+      departments: departmentNames,
+      kpiCount: kpis.length,
+      persisted: {
+        personal,
+        company,
+        aiSetup: {
+          mainStrategy: aiSetup.mainStrategy,
+          departmentHeads: aiSetup.departmentHeads,
+        },
+      },
+      note:
+        "Company fields were stored directly on organizations. Main strategy and department head metadata were stored in organizations.settings.onboarding because the current schema does not have dedicated relational columns for head name/head email.",
+    });
+  } catch (err: unknown) {
+    return json(
+      {
+        ok: false,
+        error: "Failed to submit onboarding",
+        detail: getErrorMessage(err, "Unknown error"),
+      },
+      500
+    );
+  }
 }

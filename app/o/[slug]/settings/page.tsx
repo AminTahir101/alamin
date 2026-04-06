@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import type { Session } from "@supabase/supabase-js";
@@ -72,6 +73,8 @@ const INVITABLE_ROLES: Array<{ value: Exclude<Role, "owner">; label: string }> =
   { value: "employee", label: "Employee" },
 ];
 
+type ThemeMode = "night" | "daylight";
+
 function getErrorMessage(err: unknown, fallback: string) {
   if (err instanceof Error) return err.message;
   if (typeof err === "string") return err;
@@ -108,6 +111,158 @@ function roleTone(role?: string | null) {
 
 function roleSupportsDepartment(role?: string | null) {
   return role === "dept_head" || role === "employee";
+}
+
+function applyTheme(theme: ThemeMode) {
+  if (typeof window === "undefined") return;
+  const root = document.documentElement;
+  root.setAttribute("data-theme", theme);
+  root.classList.toggle("dark", theme === "night");
+  window.localStorage.setItem("alamin-theme", theme);
+}
+
+function readTheme(): ThemeMode {
+  if (typeof window === "undefined") return "night";
+  const stored = window.localStorage.getItem("alamin-theme");
+  return stored === "daylight" ? "daylight" : "night";
+}
+
+function AppearanceCard() {
+  const [mounted, setMounted] = useState(false);
+  const [theme, setTheme] = useState<ThemeMode>(() => readTheme());
+
+  useEffect(() => {
+    applyTheme(theme);
+
+    const timeout = window.setTimeout(() => {
+      setMounted(true);
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
+  }, [theme]);
+
+  const changeTheme = (nextTheme: ThemeMode) => {
+    setTheme(nextTheme);
+  };
+
+  return (
+    <SectionCard
+      title="Appearance"
+      subtitle="Control workspace theme from one place"
+      className="bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.03))]"
+    >
+      <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+        <div className="rounded-[22px] border border-white/10 bg-white/5 p-5">
+          <div className="text-sm font-semibold text-white">Theme mode</div>
+          <div className="mt-2 text-sm leading-7 text-white/55">
+            Daylight is better for bright environments. Night keeps the interface lower glare and more focused.
+          </div>
+
+          <div className="mt-5 flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={() => changeTheme("daylight")}
+              disabled={!mounted}
+              className={[
+                "inline-flex h-11 items-center justify-center rounded-full border px-5 text-sm font-semibold transition disabled:opacity-60",
+                theme === "daylight"
+                  ? "border-[#6d5efc]/30 bg-white text-[#07090D]"
+                  : "border-white/12 bg-white/6 text-white hover:bg-white/10",
+              ].join(" ")}
+            >
+              Daylight
+            </button>
+
+            <button
+              type="button"
+              onClick={() => changeTheme("night")}
+              disabled={!mounted}
+              className={[
+                "inline-flex h-11 items-center justify-center rounded-full border px-5 text-sm font-semibold transition disabled:opacity-60",
+                theme === "night"
+                  ? "border-[#6d5efc]/30 bg-white text-[#07090D]"
+                  : "border-white/12 bg-white/6 text-white hover:bg-white/10",
+              ].join(" ")}
+            >
+              Night
+            </button>
+          </div>
+        </div>
+
+        <div className="rounded-[22px] border border-white/10 bg-white/5 p-5">
+          <div className="text-sm font-semibold text-white">Current preference</div>
+          <div className="mt-4 flex items-center gap-3">
+            <StatusBadge tone="info">{theme === "night" ? "Night mode" : "Daylight mode"}</StatusBadge>
+          </div>
+          <div className="mt-4 text-sm leading-7 text-white/55">
+            The theme switch was removed from the sidebar and homepage. Settings is now the only place that controls it.
+          </div>
+        </div>
+      </div>
+    </SectionCard>
+  );
+}
+
+function WorkspaceSetupCard({ slug }: { slug: string }) {
+  return (
+    <SectionCard
+      title="Workspace Setup"
+      subtitle="Access onboarding from settings instead of the sidebar"
+      className="bg-[linear-gradient(180deg,rgba(124,58,237,0.12),rgba(255,255,255,0.03))]"
+    >
+      <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+        <div className="rounded-[22px] border border-white/10 bg-white/5 p-5">
+          <div className="text-base font-bold text-white">Onboarding management</div>
+          <div className="mt-2 text-sm leading-7 text-white/55">
+            Update the original company setup, strategy, department heads, and seeded KPI layer from the onboarding flow.
+          </div>
+
+          <div className="mt-5 flex flex-wrap gap-3">
+            <Link
+              href={`/o/${encodeURIComponent(slug)}/onboarding`}
+              className="inline-flex h-11 items-center justify-center rounded-full bg-white px-5 text-sm font-semibold text-[#07090D] transition hover:bg-white/92"
+            >
+              Open onboarding
+            </Link>
+
+            <Link
+              href={`/o/${encodeURIComponent(slug)}/dashboard`}
+              className="inline-flex h-11 items-center justify-center rounded-full border border-white/12 bg-white/6 px-5 text-sm font-medium text-white transition hover:bg-white/10"
+            >
+              Back to dashboard
+            </Link>
+          </div>
+        </div>
+
+        <div className="rounded-[22px] border border-white/10 bg-white/5 p-5">
+          <div className="text-sm font-semibold text-white">What changed</div>
+          <div className="mt-4 grid gap-3">
+            <MiniSettingItem
+              title="Theme toggle moved"
+              desc="No more appearance switch in the sidebar."
+            />
+            <MiniSettingItem
+              title="Onboarding moved"
+              desc="No more onboarding item in workspace navigation."
+            />
+            <MiniSettingItem
+              title="Trends removed"
+              desc="The Trends section was removed from navigation."
+            />
+          </div>
+        </div>
+      </div>
+    </SectionCard>
+  );
+}
+
+function MiniSettingItem({ title, desc }: { title: string; desc: string }) {
+  return (
+    <div className="rounded-[18px] border border-white/8 bg-black/20 p-3">
+      <div className="text-sm font-semibold text-white">{title}</div>
+      <div className="mt-1 text-sm leading-6 text-white/55">{desc}</div>
+    </div>
+  );
 }
 
 export default function SettingsPage() {
@@ -492,7 +647,7 @@ export default function SettingsPage() {
       <AppPageHeader
         eyebrow="Workspace settings"
         title="Settings"
-        description="Manage organization details, members, department assignment, workspace preferences, and account context."
+        description="Manage organization details, members, theme preferences, onboarding access, and account context."
         actions={
           <div className="flex items-center gap-3">
             <button
@@ -616,6 +771,11 @@ export default function SettingsPage() {
             </div>
           )}
         </SectionCard>
+      </div>
+
+      <div className="mt-6 grid gap-6">
+        <AppearanceCard />
+        <WorkspaceSetupCard slug={orgSlug} />
       </div>
 
       <div className="mt-6">

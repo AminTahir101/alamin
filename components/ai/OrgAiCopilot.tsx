@@ -83,10 +83,8 @@ function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }
 
-function chipClass(light = false) {
-  return light
-    ? "rounded-full border border-black/10 bg-black/5 px-2.5 py-1 text-[11px] font-semibold text-black/70"
-    : "rounded-full border border-white/10 bg-white/6 px-2.5 py-1 text-[11px] font-semibold text-white/72";
+function chipClass() {
+  return "rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-2.5 py-1 text-[11px] font-semibold text-[var(--foreground-soft)]";
 }
 
 function labelForAction(action: ActionType) {
@@ -125,8 +123,8 @@ function placeholderForAction(action: ActionType) {
 
 function actionCardClass(active: boolean) {
   return active
-    ? "border-white/18 bg-white text-black"
-    : "border-white/10 bg-black/20 text-white hover:bg-white/8";
+    ? "border-[var(--border-active)] bg-[var(--foreground)] text-[var(--background)]"
+    : "border-[var(--border)] bg-[var(--card-soft)] text-[var(--foreground)] hover:border-[var(--border-strong)] hover:bg-[var(--card-strong)]";
 }
 
 function parseSseEvents(chunk: string) {
@@ -206,7 +204,8 @@ const actionCards: Array<{
   {
     key: "chat",
     title: "Ask Your AI",
-    description: "Live grounded answers based on objectives, OKRs, KRs, KPIs, JTBD, tasks, and the active cycle.",
+    description:
+      "Live grounded answers based on objectives, OKRs, KRs, KPIs, JTBD, tasks, and the active cycle.",
   },
   {
     key: "diagnose_underperformance",
@@ -555,15 +554,14 @@ export default function OrgAiCopilot({ slug }: OrgAiCopilotProps) {
     setPrompt(text);
   }
 
-  const actionModeLabel =
-    action === "chat" ? "Conversation" : "Structured AI workflow";
+  const actionModeLabel = action === "chat" ? "Conversation" : "Structured AI workflow";
 
   return (
     <div className="grid gap-6 xl:grid-cols-[0.9fr_1.12fr_0.88fr]">
       <SectionCard
         title="AI Modes"
         subtitle="Choose the job you want AI to do"
-        className="h-fit bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.03))]"
+        className="bg-[var(--card)]"
       >
         <div className="grid gap-3">
           {actionCards.map((item) => {
@@ -580,7 +578,13 @@ export default function OrgAiCopilot({ slug }: OrgAiCopilotProps) {
                 className={`rounded-[22px] border p-4 text-left transition ${actionCardClass(active)}`}
               >
                 <div className="text-sm font-semibold">{item.title}</div>
-                <div className={active ? "mt-2 text-sm text-black/70" : "mt-2 text-sm text-white/58"}>
+                <div
+                  className={
+                    active
+                      ? "mt-2 text-sm text-[color:rgba(7,17,31,0.72)]"
+                      : "mt-2 text-sm text-[var(--foreground-muted)]"
+                  }
+                >
                   {item.description}
                 </div>
               </button>
@@ -588,20 +592,22 @@ export default function OrgAiCopilot({ slug }: OrgAiCopilotProps) {
           })}
         </div>
 
-        <div className="mt-5 rounded-[22px] border border-white/10 bg-black/20 p-4">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">
+        <div className="mt-5 rounded-[22px] border border-[var(--border)] bg-[var(--card-soft)] p-4">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
             Mode
           </div>
-          <div className="mt-2 text-base font-semibold text-white">{actionModeLabel}</div>
-          <div className="mt-2 text-sm leading-6 text-white/58">
+          <div className="mt-2 text-base font-semibold text-[var(--foreground)]">
+            {actionModeLabel}
+          </div>
+          <div className="mt-2 text-sm leading-6 text-[var(--foreground-muted)]">
             {action === "chat"
               ? "Use this when you want reasoning and explanation."
               : "Use this when you want a structured preview before writing anything to the database."}
           </div>
         </div>
 
-        <div className="mt-5 rounded-[22px] border border-white/10 bg-black/20 p-4">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">
+        <div className="mt-5 rounded-[22px] border border-[var(--border)] bg-[var(--card-soft)] p-4">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
             Best use cases
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
@@ -610,7 +616,7 @@ export default function OrgAiCopilot({ slug }: OrgAiCopilotProps) {
                 key={example}
                 type="button"
                 onClick={() => handleStarterPrompt(example)}
-                className="rounded-full border border-white/10 bg-white/6 px-3 py-2 text-left text-xs font-semibold text-white/72 transition hover:bg-white/10"
+                className="rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-3 py-2 text-left text-xs font-semibold text-[var(--foreground-soft)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
               >
                 {example}
               </button>
@@ -622,18 +628,18 @@ export default function OrgAiCopilot({ slug }: OrgAiCopilotProps) {
       <SectionCard
         title="AI Workspace"
         subtitle="Prompt, review, and move work forward"
-        className="min-h-[760px] bg-[linear-gradient(180deg,rgba(124,58,237,0.08),rgba(255,255,255,0.03))]"
+        className="bg-[linear-gradient(180deg,rgba(109,94,252,0.08),rgba(55,207,255,0.03))]"
       >
         {(errorMsg || successMsg) && (
           <div className="mb-5 grid gap-3">
             {errorMsg ? (
-              <div className="rounded-[18px] border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-100">
+              <div className="rounded-[18px] border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-700 dark:text-red-100">
                 {errorMsg}
               </div>
             ) : null}
 
             {successMsg ? (
-              <div className="rounded-[18px] border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">
+              <div className="rounded-[18px] border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-100">
                 {successMsg}
               </div>
             ) : null}
@@ -642,7 +648,7 @@ export default function OrgAiCopilot({ slug }: OrgAiCopilotProps) {
 
         <div
           ref={scrollerRef}
-          className="mb-5 h-[420px] overflow-y-auto rounded-[24px] border border-white/10 bg-black/20 p-4"
+          className="mb-5 h-[420px] overflow-y-auto rounded-[24px] border border-[var(--border)] bg-[var(--card-soft)] p-4"
         >
           <div className="space-y-4">
             {messages.map((message) => (
@@ -653,11 +659,11 @@ export default function OrgAiCopilot({ slug }: OrgAiCopilotProps) {
                 <div
                   className={
                     message.role === "user"
-                      ? "max-w-[88%] rounded-[22px] border border-white/10 bg-white px-4 py-3 text-sm leading-7 text-black shadow-[0_12px_30px_rgba(0,0,0,0.18)]"
-                      : "max-w-[88%] rounded-[22px] border border-white/10 bg-white/6 px-4 py-3 text-sm leading-7 text-white/88"
+                      ? "max-w-[88%] rounded-[22px] border border-[var(--border-active)] bg-[var(--foreground)] px-4 py-3 text-sm leading-7 text-[var(--background)] shadow-[0_12px_30px_rgba(0,0,0,0.10)]"
+                      : "max-w-[88%] rounded-[22px] border border-[var(--border)] bg-[var(--card)] px-4 py-3 text-sm leading-7 text-[var(--foreground)]"
                   }
                 >
-                  <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] opacity-55">
+                  <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] opacity-60">
                     {message.role === "user" ? "You" : "Your AI"}
                   </div>
                   <div className="whitespace-pre-wrap">
@@ -676,13 +682,15 @@ export default function OrgAiCopilot({ slug }: OrgAiCopilotProps) {
           </div>
         </div>
 
-        <div className="rounded-[24px] border border-white/10 bg-black/20 p-4">
+        <div className="rounded-[24px] border border-[var(--border)] bg-[var(--card-soft)] p-4">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
                 Prompt
               </div>
-              <div className="mt-1 text-sm text-white/55">{labelForAction(action)}</div>
+              <div className="mt-1 text-sm text-[var(--foreground-muted)]">
+                {labelForAction(action)}
+              </div>
             </div>
             <StatusBadge tone={action === "chat" ? "info" : "neutral"}>
               {action === "chat" ? "Live" : "Preview first"}
@@ -693,7 +701,7 @@ export default function OrgAiCopilot({ slug }: OrgAiCopilotProps) {
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             placeholder={placeholderForAction(action)}
-            className="min-h-[140px] w-full resize-none rounded-[20px] border border-white/10 bg-white/[0.03] px-4 py-4 text-sm leading-7 text-white outline-none placeholder:text-white/25 transition focus:border-white/18"
+            className="min-h-[140px] w-full resize-none rounded-[20px] border border-[var(--border)] bg-[var(--card)] px-4 py-4 text-sm leading-7 text-[var(--foreground)] outline-none placeholder:text-[var(--foreground-faint)] transition focus:border-[var(--border-strong)]"
           />
 
           <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -703,7 +711,7 @@ export default function OrgAiCopilot({ slug }: OrgAiCopilotProps) {
                   key={example}
                   type="button"
                   onClick={() => handleStarterPrompt(example)}
-                  className="rounded-full border border-white/10 bg-white/6 px-3 py-2 text-xs font-semibold text-white/72 transition hover:bg-white/10"
+                  className="rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-3 py-2 text-xs font-semibold text-[var(--foreground-soft)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
                 >
                   Use example
                 </button>
@@ -714,7 +722,7 @@ export default function OrgAiCopilot({ slug }: OrgAiCopilotProps) {
               type="button"
               onClick={() => void handleSubmit()}
               disabled={chatLoading || actionLoading || approveLoading || !prompt.trim()}
-              className="inline-flex h-12 items-center justify-center rounded-full bg-white px-5 text-sm font-semibold text-[#07090D] transition hover:bg-white/92 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex h-12 items-center justify-center rounded-full bg-[var(--foreground)] px-5 text-sm font-semibold text-[var(--background)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {chatLoading || actionLoading
                 ? "Working..."
@@ -730,7 +738,7 @@ export default function OrgAiCopilot({ slug }: OrgAiCopilotProps) {
         <SectionCard
           title="Preview & Approval"
           subtitle="Review structured output before it writes to the workspace"
-          className="bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.03))]"
+          className="bg-[var(--card)]"
         >
           {preview ? (
             <PreviewPanel
@@ -754,7 +762,7 @@ export default function OrgAiCopilot({ slug }: OrgAiCopilotProps) {
         <SectionCard
           title="AI guardrails"
           subtitle="How this workspace behaves"
-          className="bg-[linear-gradient(180deg,rgba(124,58,237,0.08),rgba(255,255,255,0.03))]"
+          className="bg-[linear-gradient(180deg,rgba(109,94,252,0.08),rgba(55,207,255,0.03))]"
         >
           <div className="grid gap-3">
             <GuardrailRow
@@ -771,8 +779,8 @@ export default function OrgAiCopilot({ slug }: OrgAiCopilotProps) {
             />
           </div>
 
-          <div className="mt-5 rounded-[20px] border border-white/10 bg-black/20 p-4">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">
+          <div className="mt-5 rounded-[20px] border border-[var(--border)] bg-[var(--card-soft)] p-4">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
               Next useful pages
             </div>
             <div className="mt-3 grid gap-2">
@@ -796,9 +804,9 @@ function GuardrailRow({
   desc: string;
 }) {
   return (
-    <div className="rounded-[18px] border border-white/10 bg-black/20 p-4">
-      <div className="text-sm font-semibold text-white">{title}</div>
-      <div className="mt-2 text-sm leading-6 text-white/58">{desc}</div>
+    <div className="rounded-[18px] border border-[var(--border)] bg-[var(--card-soft)] p-4">
+      <div className="text-sm font-semibold text-[var(--foreground)]">{title}</div>
+      <div className="mt-2 text-sm leading-6 text-[var(--foreground-muted)]">{desc}</div>
     </div>
   );
 }
@@ -813,7 +821,7 @@ function MiniLink({
   return (
     <Link
       href={href}
-      className="rounded-[16px] border border-white/10 bg-white/[0.03] px-4 py-3 text-sm font-semibold text-white/78 transition hover:bg-white/[0.06]"
+      className="rounded-[16px] border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 py-3 text-sm font-semibold text-[var(--foreground-soft)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
     >
       {label}
     </Link>
@@ -845,14 +853,20 @@ function PreviewPanel({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
+      <div className="rounded-[22px] border border-[var(--border)] bg-[var(--card-soft)] p-4">
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
-            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
               Preview
             </div>
-            <div className="mt-2 text-xl font-bold text-white">{labelForAction(preview.action)}</div>
-            {summary ? <div className="mt-2 text-sm leading-6 text-white/58">{summary}</div> : null}
+            <div className="mt-2 text-xl font-bold text-[var(--foreground)]">
+              {labelForAction(preview.action)}
+            </div>
+            {summary ? (
+              <div className="mt-2 text-sm leading-6 text-[var(--foreground-muted)]">
+                {summary}
+              </div>
+            ) : null}
           </div>
 
           <div className="flex gap-2">
@@ -861,7 +875,7 @@ function PreviewPanel({
                 type="button"
                 onClick={onApprove}
                 disabled={executing}
-                className="inline-flex h-11 items-center justify-center rounded-full bg-white px-4 text-sm font-semibold text-black transition hover:bg-white/92 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex h-11 items-center justify-center rounded-full bg-[var(--foreground)] px-4 text-sm font-semibold text-[var(--background)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {executing ? "Saving..." : "Approve & Save"}
               </button>
@@ -871,7 +885,7 @@ function PreviewPanel({
               type="button"
               onClick={onDiscard}
               disabled={executing}
-              className="inline-flex h-11 items-center justify-center rounded-full border border-white/12 bg-white/5 px-4 text-sm font-semibold text-white transition hover:bg-white/8 disabled:opacity-50"
+              className="inline-flex h-11 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-sm font-semibold text-[var(--foreground)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)] disabled:opacity-50"
             >
               {preview.action === "diagnose_underperformance" ? "Close" : "Discard"}
             </button>
@@ -882,30 +896,36 @@ function PreviewPanel({
       {preview.action === "diagnose_underperformance" ? (
         <>
           {diagnosis ? (
-            <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">
+            <div className="rounded-[22px] border border-[var(--border)] bg-[var(--card-soft)] p-4">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
                 Diagnosis
               </div>
-              <div className="mt-2 whitespace-pre-wrap text-sm leading-7 text-white/88">
+              <div className="mt-2 whitespace-pre-wrap text-sm leading-7 text-[var(--foreground)]">
                 {diagnosis}
               </div>
             </div>
           ) : null}
 
           {causes.length ? (
-            <PreviewListCard title="Likely causes" items={causes.map((item) => safeString(item)).filter(Boolean)} />
+            <PreviewListCard
+              title="Likely causes"
+              items={causes.map((item) => safeString(item)).filter(Boolean)}
+            />
           ) : null}
 
           {actions.length ? (
-            <PreviewListCard title="Recommended actions" items={actions.map((item) => safeString(item)).filter(Boolean)} />
+            <PreviewListCard
+              title="Recommended actions"
+              items={actions.map((item) => safeString(item)).filter(Boolean)}
+            />
           ) : null}
 
           {suggestedUpdates ? (
-            <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">
+            <div className="rounded-[22px] border border-[var(--border)] bg-[var(--card-soft)] p-4">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
                 Suggested updates
               </div>
-              <pre className="mt-3 overflow-x-auto whitespace-pre-wrap text-xs leading-6 text-white/72">
+              <pre className="mt-3 overflow-x-auto whitespace-pre-wrap text-xs leading-6 text-[var(--foreground-soft)]">
                 {JSON.stringify(suggestedUpdates, null, 2)}
               </pre>
             </div>
@@ -926,8 +946,8 @@ function PreviewPanel({
             ]}
           />
           {asArray(okr.key_results).length ? (
-            <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">
+            <div className="rounded-[22px] border border-[var(--border)] bg-[var(--card-soft)] p-4">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
                 Key results
               </div>
               <div className="mt-3 grid gap-3">
@@ -935,17 +955,25 @@ function PreviewPanel({
                   const kr = asObject(item) ?? {};
                   const current = Number(kr.current_value ?? 0);
                   const target = Number(kr.target_value ?? 0);
-                  const progress = target > 0 ? Math.max(0, Math.min(100, (current / target) * 100)) : 0;
+                  const progress =
+                    target > 0 ? Math.max(0, Math.min(100, (current / target) * 100)) : 0;
 
                   return (
-                    <div key={index} className="rounded-[18px] border border-white/10 bg-white/[0.03] p-4">
-                      <div className="text-sm font-semibold text-white">
+                    <div
+                      key={index}
+                      className="rounded-[18px] border border-[var(--border)] bg-[var(--card)] p-4"
+                    >
+                      <div className="text-sm font-semibold text-[var(--foreground)]">
                         {safeString(kr.title) || `Key Result ${index + 1}`}
                       </div>
                       <div className="mt-2 flex flex-wrap gap-2">
                         <span className={chipClass()}>{`Metric: ${safeString(kr.metric_name) || "—"}`}</span>
-                        <span className={chipClass()}>{`Current: ${String(kr.current_value ?? 0)} ${safeString(kr.unit)}`}</span>
-                        <span className={chipClass()}>{`Target: ${String(kr.target_value ?? 0)} ${safeString(kr.unit)}`}</span>
+                        <span className={chipClass()}>{`Current: ${String(
+                          kr.current_value ?? 0
+                        )} ${safeString(kr.unit)}`}</span>
+                        <span className={chipClass()}>{`Target: ${String(
+                          kr.target_value ?? 0
+                        )} ${safeString(kr.unit)}`}</span>
                         <span className={chipClass()}>{`Status: ${safeString(kr.status) || "not_started"}`}</span>
                       </div>
                       <div className="mt-3">
@@ -975,20 +1003,23 @@ function PreviewPanel({
       ) : null}
 
       {(preview.action === "generate_jtbd" || preview.action === "create_tasks") && tasks.length ? (
-        <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">
+        <div className="rounded-[22px] border border-[var(--border)] bg-[var(--card-soft)] p-4">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
             Tasks
           </div>
           <div className="mt-3 grid gap-3">
             {tasks.map((task, index) => {
               const row = asObject(task) ?? {};
               return (
-                <div key={index} className="rounded-[18px] border border-white/10 bg-white/[0.03] p-4">
-                  <div className="text-sm font-semibold text-white">
+                <div
+                  key={index}
+                  className="rounded-[18px] border border-[var(--border)] bg-[var(--card)] p-4"
+                >
+                  <div className="text-sm font-semibold text-[var(--foreground)]">
                     {safeString(row.title) || `Task ${index + 1}`}
                   </div>
                   {safeString(row.description) ? (
-                    <div className="mt-2 text-sm leading-6 text-white/58">
+                    <div className="mt-2 text-sm leading-6 text-[var(--foreground-muted)]">
                       {safeString(row.description)}
                     </div>
                   ) : null}
@@ -1023,9 +1054,16 @@ function PreviewPanel({
         />
       ) : null}
 
-      {!summary && !diagnosis && !okr && !cluster && !kpi && !tasks.length && !causes.length && !actions.length ? (
-        <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
-          <pre className="overflow-x-auto whitespace-pre-wrap text-xs leading-6 text-white/72">
+      {!summary &&
+      !diagnosis &&
+      !okr &&
+      !cluster &&
+      !kpi &&
+      !tasks.length &&
+      !causes.length &&
+      !actions.length ? (
+        <div className="rounded-[22px] border border-[var(--border)] bg-[var(--card-soft)] p-4">
+          <pre className="overflow-x-auto whitespace-pre-wrap text-xs leading-6 text-[var(--foreground-soft)]">
             {JSON.stringify(data, null, 2)}
           </pre>
         </div>
@@ -1042,15 +1080,15 @@ function PreviewListCard({
   items: string[];
 }) {
   return (
-    <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">
+    <div className="rounded-[22px] border border-[var(--border)] bg-[var(--card-soft)] p-4">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
         {title}
       </div>
       <div className="mt-3 space-y-2">
         {items.map((item) => (
           <div
             key={item}
-            className="rounded-[16px] border border-white/10 bg-white/[0.03] px-4 py-3 text-sm leading-6 text-white/84"
+            className="rounded-[16px] border border-[var(--border)] bg-[var(--card)] px-4 py-3 text-sm leading-6 text-[var(--foreground)]"
           >
             {item}
           </div>
@@ -1070,9 +1108,11 @@ function StructuredCard({
   chips: string[];
 }) {
   return (
-    <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
-      <div className="text-lg font-semibold text-white">{title}</div>
-      {subtitle ? <div className="mt-2 text-sm leading-6 text-white/58">{subtitle}</div> : null}
+    <div className="rounded-[22px] border border-[var(--border)] bg-[var(--card-soft)] p-4">
+      <div className="text-lg font-semibold text-[var(--foreground)]">{title}</div>
+      {subtitle ? (
+        <div className="mt-2 text-sm leading-6 text-[var(--foreground-muted)]">{subtitle}</div>
+      ) : null}
       <div className="mt-3 flex flex-wrap gap-2">
         {chips.map((chip) => (
           <span key={chip} className={chipClass()}>

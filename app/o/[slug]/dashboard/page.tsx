@@ -148,6 +148,19 @@ function taskUrgencyTone(priority?: string | null) {
   return "neutral" as const;
 }
 
+function tonePanelClass(tone: "success" | "warning" | "danger" | "info") {
+  switch (tone) {
+    case "success":
+      return "border-emerald-500/20 bg-[linear-gradient(180deg,rgba(34,197,94,0.10),rgba(34,197,94,0.04))]";
+    case "warning":
+      return "border-amber-500/20 bg-[linear-gradient(180deg,rgba(245,158,11,0.10),rgba(245,158,11,0.04))]";
+    case "danger":
+      return "border-red-500/20 bg-[linear-gradient(180deg,rgba(239,68,68,0.10),rgba(239,68,68,0.04))]";
+    case "info":
+      return "border-sky-500/20 bg-[linear-gradient(180deg,rgba(56,189,248,0.10),rgba(56,189,248,0.04))]";
+  }
+}
+
 export default function DashboardPage() {
   const params = useParams<{ slug: string }>();
   const router = useRouter();
@@ -189,7 +202,11 @@ export default function DashboardPage() {
       const session = await ensureAuth();
       if (!session) return;
 
-      const apiUrl = new URL(`/api/o/${encodeURIComponent(orgSlug)}/dashboard`, window.location.origin).toString();
+      const apiUrl = new URL(
+        `/api/o/${encodeURIComponent(orgSlug)}/dashboard`,
+        window.location.origin
+      ).toString();
+
       const res = await fetch(apiUrl, {
         method: "GET",
         headers: { Authorization: `Bearer ${session.access_token}` },
@@ -229,8 +246,11 @@ export default function DashboardPage() {
     const activeObjectives = company?.total_objectives ?? objectives.length;
     const activeOkrs = company?.active_okrs ?? 0;
     const activeKpis = company?.active_kpis ?? kpis.length;
-    const openTasks = company?.open_tasks ?? tasks.filter((task) => !["done", "cancelled"].includes(task.status)).length;
-    const completedTasks = company?.completed_tasks ?? tasks.filter((task) => task.status === "done").length;
+    const openTasks =
+      company?.open_tasks ??
+      tasks.filter((task) => !["done", "cancelled"].includes(task.status)).length;
+    const completedTasks =
+      company?.completed_tasks ?? tasks.filter((task) => task.status === "done").length;
     const overdueTasks = company?.overdue_tasks ?? 0;
     const taskCompletionRate = clamp(Number(company?.task_completion_rate ?? 0));
     const atRiskKpis = kpis.filter((kpi) => kpi.score < 60).length;
@@ -256,7 +276,10 @@ export default function DashboardPage() {
     };
   }, [company, objectives, kpis, tasks]);
 
-  const topRiskKpis = useMemo(() => [...kpis].sort((a, b) => a.score - b.score).slice(0, 5), [kpis]);
+  const topRiskKpis = useMemo(
+    () => [...kpis].sort((a, b) => a.score - b.score).slice(0, 5),
+    [kpis]
+  );
 
   const topObjectives = useMemo(
     () => [...objectives].sort((a, b) => a.progress - b.progress).slice(0, 5),
@@ -291,10 +314,14 @@ export default function DashboardPage() {
 
   const aiHeadline = useMemo(() => {
     if (stats.overdueTasks > 0) {
-      return `${numberFmt(stats.overdueTasks)} overdue task${stats.overdueTasks === 1 ? "" : "s"} are slowing execution.`;
+      return `${numberFmt(stats.overdueTasks)} overdue task${
+        stats.overdueTasks === 1 ? "" : "s"
+      } are slowing execution.`;
     }
     if (stats.atRiskKpis > 0) {
-      return `${numberFmt(stats.atRiskKpis)} KPI${stats.atRiskKpis === 1 ? "" : "s"} need attention this cycle.`;
+      return `${numberFmt(stats.atRiskKpis)} KPI${
+        stats.atRiskKpis === 1 ? "" : "s"
+      } need attention this cycle.`;
     }
     if (stats.companyScore >= 85) {
       return "Execution is healthy and the workspace looks on track.";
@@ -307,7 +334,9 @@ export default function DashboardPage() {
 
   const aiSubtext = useMemo(() => {
     if (aiReport?.summary) return aiReport.summary;
-    if (!cycle) return "No active cycle is configured yet. Create or activate a cycle to make the dashboard meaningful.";
+    if (!cycle) {
+      return "No active cycle is configured yet. Create or activate a cycle to make the dashboard meaningful.";
+    }
     return "Use the AI workspace to generate OKRs, diagnose blockers, and translate performance signals into action.";
   }, [aiReport, cycle]);
 
@@ -335,7 +364,7 @@ export default function DashboardPage() {
         <div className="flex flex-wrap items-center gap-3">
           <Link
             href={`/o/${orgSlug}/your-ai`}
-            className="inline-flex h-11 items-center justify-center rounded-full border border-white/12 bg-white/5 px-5 text-sm font-medium text-white/90 transition hover:border-white/20 hover:bg-white/8"
+            className="inline-flex h-11 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-5 text-sm font-medium text-[var(--foreground-soft)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
           >
             Open AI Workspace
           </Link>
@@ -343,7 +372,7 @@ export default function DashboardPage() {
             type="button"
             onClick={() => void refreshDashboard()}
             disabled={refreshing}
-            className="inline-flex h-11 items-center justify-center rounded-full bg-white px-5 text-sm font-semibold text-[#07090D] transition hover:bg-white/92 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex h-11 items-center justify-center rounded-full bg-[var(--foreground)] px-5 text-sm font-semibold text-[var(--background)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {refreshing ? "Refreshing..." : "Refresh dashboard"}
           </button>
@@ -361,66 +390,74 @@ export default function DashboardPage() {
           {Array.from({ length: 8 }).map((_, index) => (
             <div
               key={index}
-              className="h-36 animate-pulse rounded-[28px] border border-white/10 bg-white/5"
+              className="h-36 animate-pulse rounded-[28px] border border-[var(--border)] bg-[var(--card)]"
             />
           ))}
         </div>
       ) : (
         <>
           {msg ? (
-            <div className="mb-6 rounded-[22px] border border-red-400/20 bg-red-400/8 px-5 py-4 text-sm text-red-100">
+            <div className="mb-6 rounded-[22px] border border-red-500/20 bg-red-500/10 px-5 py-4 text-sm text-red-700 dark:text-red-100">
               {msg}
             </div>
           ) : null}
 
-          <section className="mb-6 overflow-hidden rounded-[30px] border border-white/12 bg-[linear-gradient(135deg,rgba(124,58,237,0.22),rgba(34,211,238,0.08))] p-[1px] shadow-[0_24px_80px_rgba(0,0,0,0.45)]">
-            <div className="rounded-[29px] bg-[linear-gradient(180deg,rgba(17,21,29,0.98),rgba(11,14,20,0.98))] p-6 md:p-7">
-              <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-                <div>
-                  <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/58">
-                    <span className="h-2 w-2 rounded-full bg-[#22D3EE]" />
-                    AI Command
-                  </div>
-
-                  <h2 className="mt-5 text-3xl font-semibold tracking-tight text-white md:text-4xl">
-                    {aiHeadline}
-                  </h2>
-
-                  <p className="mt-4 max-w-3xl text-base leading-7 text-white/62">{aiSubtext}</p>
-
-                  <div className="mt-6 flex flex-wrap gap-3">
-                    {quickActions.map((action) => (
-                      <Link
-                        key={action.href}
-                        href={action.href}
-                        className="inline-flex h-11 items-center justify-center rounded-full border border-white/12 bg-white/[0.04] px-5 text-sm font-semibold text-white transition hover:border-white/20 hover:bg-white/[0.08]"
-                      >
-                        {action.label}
-                      </Link>
-                    ))}
-                  </div>
+          <section className="mb-6 overflow-hidden rounded-[32px] border border-[var(--border-strong)] bg-[var(--background-elevated)] alamin-glow">
+            <div className="grid gap-6 p-6 md:p-7 xl:grid-cols-[1.2fr_0.8fr]">
+              <div>
+                <div className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
+                  <span className="h-2 w-2 rounded-full bg-[var(--accent-2)]" />
+                  AI Command
                 </div>
 
-                <div className="grid gap-3">
-                  <InsightMetric
-                    label="Company health"
-                    value={`${numberFmt(stats.companyScore)}%`}
-                    tone={healthTone(stats.companyScore)}
-                    hint={company?.label ?? "No label"}
-                  />
-                  <InsightMetric
-                    label="At-risk KPIs"
-                    value={numberFmt(stats.atRiskKpis)}
-                    tone={stats.atRiskKpis > 0 ? "warning" : "success"}
-                    hint={`${numberFmt(stats.onTrackKpis)} on track`}
-                  />
-                  <InsightMetric
-                    label="Open execution"
-                    value={numberFmt(stats.openTasks)}
-                    tone={stats.overdueTasks > 0 ? "danger" : stats.blockedTasks > 0 ? "warning" : "info"}
-                    hint={`${numberFmt(stats.overdueTasks)} overdue · ${numberFmt(stats.blockedTasks)} blocked`}
-                  />
+                <h2 className="mt-5 text-3xl font-semibold tracking-tight text-[var(--foreground)] md:text-4xl">
+                  {aiHeadline}
+                </h2>
+
+                <p className="mt-4 max-w-3xl text-base leading-7 text-[var(--foreground-muted)]">
+                  {aiSubtext}
+                </p>
+
+                <div className="mt-6 flex flex-wrap gap-3">
+                  {quickActions.map((action) => (
+                    <Link
+                      key={action.href}
+                      href={action.href}
+                      className="inline-flex h-11 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-5 text-sm font-semibold text-[var(--foreground-soft)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
+                    >
+                      {action.label}
+                    </Link>
+                  ))}
                 </div>
+              </div>
+
+              <div className="grid gap-3">
+                <InsightMetric
+                  label="Company health"
+                  value={`${numberFmt(stats.companyScore)}%`}
+                  tone={healthTone(stats.companyScore)}
+                  hint={company?.label ?? "No label"}
+                />
+                <InsightMetric
+                  label="At-risk KPIs"
+                  value={numberFmt(stats.atRiskKpis)}
+                  tone={stats.atRiskKpis > 0 ? "warning" : "success"}
+                  hint={`${numberFmt(stats.onTrackKpis)} on track`}
+                />
+                <InsightMetric
+                  label="Open execution"
+                  value={numberFmt(stats.openTasks)}
+                  tone={
+                    stats.overdueTasks > 0
+                      ? "danger"
+                      : stats.blockedTasks > 0
+                        ? "warning"
+                        : "info"
+                  }
+                  hint={`${numberFmt(stats.overdueTasks)} overdue · ${numberFmt(
+                    stats.blockedTasks
+                  )} blocked`}
+                />
               </div>
             </div>
           </section>
@@ -442,7 +479,9 @@ export default function DashboardPage() {
             <StatCard
               title="Open Tasks"
               value={numberFmt(stats.openTasks)}
-              hint={`${numberFmt(stats.completedTasks)} completed · ${numberFmt(stats.overdueTasks)} overdue`}
+              hint={`${numberFmt(stats.completedTasks)} completed · ${numberFmt(
+                stats.overdueTasks
+              )} overdue`}
               tone={stats.overdueTasks > 0 ? "warning" : "success"}
             />
             <StatCard
@@ -457,17 +496,18 @@ export default function DashboardPage() {
             <SectionCard
               title="Executive Summary"
               subtitle={
-                visibility ? `View scope: ${visibility} · Role: ${role ?? "member"}` : "Live company-level execution signal"
+                visibility
+                  ? `View scope: ${visibility} · Role: ${role ?? "member"}`
+                  : "Live company-level execution signal"
               }
-              className="bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.03))]"
             >
               <div className="grid gap-5 lg:grid-cols-[0.95fr_1.05fr]">
-                <div className="rounded-[22px] border border-white/10 bg-black/20 p-5">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">
+                <div className="rounded-[22px] border border-[var(--border)] bg-[var(--card-soft)] p-5">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
                     Current health
                   </div>
                   <div className="mt-4 flex items-center justify-between gap-4">
-                    <div className="text-5xl font-black tracking-[-0.04em] text-white">
+                    <div className="text-5xl font-black tracking-[-0.04em] text-[var(--foreground)]">
                       {numberFmt(stats.companyScore)}
                     </div>
                     <StatusBadge tone={toneFromStatus(company?.label)}>
@@ -477,7 +517,7 @@ export default function DashboardPage() {
                   <div className="mt-5">
                     <ProgressBar value={stats.companyScore} />
                   </div>
-                  <p className="mt-4 text-sm leading-7 text-white/58">
+                  <p className="mt-4 text-sm leading-7 text-[var(--foreground-muted)]">
                     {company?.summary ??
                       "Performance summary will appear here once snapshots and AI analysis have enough data."}
                   </p>
@@ -486,7 +526,10 @@ export default function DashboardPage() {
                 <div className="grid gap-3">
                   <SummaryStrip label="Cycle" value={cycleLabel(cycle)} />
                   <SummaryStrip label="Departments" value={numberFmt(departments.length)} />
-                  <SummaryStrip label="Task completion" value={`${numberFmt(stats.taskCompletionRate)}%`} />
+                  <SummaryStrip
+                    label="Task completion"
+                    value={`${numberFmt(stats.taskCompletionRate)}%`}
+                  />
                   <SummaryStrip label="At-risk KPIs" value={numberFmt(stats.atRiskKpis)} />
                   <SummaryStrip label="Blocked tasks" value={numberFmt(stats.blockedTasks)} />
                 </div>
@@ -496,36 +539,47 @@ export default function DashboardPage() {
             <SectionCard
               title="Mach3 Analysis"
               subtitle="Latest executive intelligence output"
-              className="bg-[linear-gradient(180deg,rgba(124,58,237,0.12),rgba(255,255,255,0.03))]"
+              className="bg-[linear-gradient(180deg,rgba(109,94,252,0.08),rgba(55,207,255,0.03))]"
               actions={
                 <Link
                   href={`/o/${orgSlug}/your-ai`}
-                  className="inline-flex h-10 items-center justify-center rounded-full border border-white/12 bg-white/5 px-4 text-sm font-semibold text-white/88 transition hover:border-white/22 hover:bg-white/8"
+                  className="inline-flex h-10 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-sm font-semibold text-[var(--foreground-soft)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
                 >
                   Open AI
                 </Link>
               }
             >
               {aiReport ? (
-                <div className="rounded-[22px] border border-white/10 bg-black/20 p-5">
+                <div className="rounded-[22px] border border-[var(--border)] bg-[var(--card-soft)] p-5">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <div className="text-lg font-semibold text-white">{aiReport.title}</div>
-                      <div className="mt-1 text-[11px] uppercase tracking-[0.16em] text-white/38">
+                      <div className="text-lg font-semibold text-[var(--foreground)]">
+                        {aiReport.title}
+                      </div>
+                      <div className="mt-1 text-[11px] uppercase tracking-[0.16em] text-[var(--foreground-faint)]">
                         {fmtDate(aiReport.created_at)}
                       </div>
                     </div>
                     <StatusBadge tone="info">Mach3</StatusBadge>
                   </div>
 
-                  <p className="mt-4 text-sm leading-7 text-white/60">
+                  <p className="mt-4 text-sm leading-7 text-[var(--foreground-muted)]">
                     {aiReport.summary ?? "No AI summary was stored for the latest report."}
                   </p>
 
                   <div className="mt-5 grid gap-3">
-                    <ActionChip label="Diagnose underperformance" href={`/o/${orgSlug}/your-ai`} />
-                    <ActionChip label="Generate OKRs from weak KPIs" href={`/o/${orgSlug}/your-ai`} />
-                    <ActionChip label="Create execution tasks" href={`/o/${orgSlug}/tasks`} />
+                    <ActionChip
+                      label="Diagnose underperformance"
+                      href={`/o/${orgSlug}/your-ai`}
+                    />
+                    <ActionChip
+                      label="Generate OKRs from weak KPIs"
+                      href={`/o/${orgSlug}/your-ai`}
+                    />
+                    <ActionChip
+                      label="Create execution tasks"
+                      href={`/o/${orgSlug}/tasks`}
+                    />
                   </div>
                 </div>
               ) : (
@@ -538,11 +592,7 @@ export default function DashboardPage() {
           </div>
 
           <div className="mt-6 grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-            <SectionCard
-              title="Department Performance"
-              subtitle="Who is leading and who is slipping"
-              className="bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.03))]"
-            >
+            <SectionCard title="Department Performance" subtitle="Who is leading and who is slipping">
               {departments.length ? (
                 <div className="grid gap-5">
                   <div className="grid gap-4 lg:grid-cols-2">
@@ -562,32 +612,34 @@ export default function DashboardPage() {
                     {departments.map((department) => (
                       <div
                         key={department.id}
-                        className="rounded-[22px] border border-white/10 bg-black/20 p-4"
+                        className="rounded-[22px] border border-[var(--border)] bg-[var(--card-soft)] p-4"
                       >
                         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                           <div>
-                            <div className="text-base font-semibold text-white">{department.name}</div>
+                            <div className="text-base font-semibold text-[var(--foreground)]">
+                              {department.name}
+                            </div>
                             <div className="mt-2 flex flex-wrap items-center gap-2">
                               <StatusBadge tone={toneFromStatus(department.label)}>
                                 {department.label}
                               </StatusBadge>
-                              <span className="text-xs text-white/42">
+                              <span className="text-xs text-[var(--foreground-faint)]">
                                 {department.objectives} objectives
                               </span>
-                              <span className="text-xs text-white/42">
+                              <span className="text-xs text-[var(--foreground-faint)]">
                                 {department.okrs} OKRs
                               </span>
-                              <span className="text-xs text-white/42">
+                              <span className="text-xs text-[var(--foreground-faint)]">
                                 {department.kpis} KPIs
                               </span>
                             </div>
-                            <div className="mt-3 text-sm text-white/55">
+                            <div className="mt-3 text-sm text-[var(--foreground-muted)]">
                               {department.open_tasks} open tasks · {department.completed_tasks} completed
                             </div>
                           </div>
 
                           <div className="min-w-[190px]">
-                            <div className="mb-2 text-right text-2xl font-black tracking-[-0.03em] text-white">
+                            <div className="mb-2 text-right text-2xl font-black tracking-[-0.03em] text-[var(--foreground)]">
                               {numberFmt(department.score)}
                             </div>
                             <ProgressBar value={department.score} />
@@ -605,11 +657,7 @@ export default function DashboardPage() {
               )}
             </SectionCard>
 
-            <SectionCard
-              title="Critical Alerts"
-              subtitle="The most urgent weak points right now"
-              className="bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.03))]"
-            >
+            <SectionCard title="Critical Alerts" subtitle="The most urgent weak points right now">
               <div className="grid gap-3">
                 <AlertRow
                   title="Overdue tasks"
@@ -643,32 +691,38 @@ export default function DashboardPage() {
             <SectionCard
               title="Priority KPIs"
               subtitle="Lowest-scoring KPIs surfaced first"
-              className="bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.03))]"
             >
               {topRiskKpis.length ? (
                 <div className="grid gap-4">
                   {topRiskKpis.map((kpi) => {
-                    const completion = completionFromValues(kpi.current_value, kpi.target_value);
+                    const completion = completionFromValues(
+                      kpi.current_value,
+                      kpi.target_value
+                    );
 
                     return (
                       <div
                         key={kpi.id}
-                        className="rounded-[22px] border border-white/10 bg-black/20 p-4"
+                        className="rounded-[22px] border border-[var(--border)] bg-[var(--card-soft)] p-4"
                       >
                         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
-                              <div className="text-base font-semibold text-white">{kpi.title}</div>
-                              <StatusBadge tone={toneFromStatus(kpi.label)}>{kpi.label}</StatusBadge>
+                              <div className="text-base font-semibold text-[var(--foreground)]">
+                                {kpi.title}
+                              </div>
+                              <StatusBadge tone={toneFromStatus(kpi.label)}>
+                                {kpi.label}
+                              </StatusBadge>
                             </div>
 
                             {kpi.description ? (
-                              <div className="mt-2 text-sm leading-6 text-white/55">
+                              <div className="mt-2 text-sm leading-6 text-[var(--foreground-muted)]">
                                 {kpi.description}
                               </div>
                             ) : null}
 
-                            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-white/42">
+                            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[var(--foreground-faint)]">
                               <span>{kpi.department_name ?? "Company-wide"}</span>
                               <span>•</span>
                               <span>
@@ -680,13 +734,18 @@ export default function DashboardPage() {
                           </div>
 
                           <div className="w-full max-w-[220px]">
-                            <div className="mb-2 flex items-center justify-between text-sm text-white/60">
+                            <div className="mb-2 flex items-center justify-between text-sm text-[var(--foreground-muted)]">
                               <span>Score</span>
-                              <span className="font-semibold text-white">{numberFmt(kpi.score)}%</span>
+                              <span className="font-semibold text-[var(--foreground)]">
+                                {numberFmt(kpi.score)}%
+                              </span>
                             </div>
                             <ProgressBar value={kpi.score} />
-                            <div className="mt-4 text-sm text-white/60">
-                              Progress to target: <span className="font-semibold text-white">{numberFmt(completion)}%</span>
+                            <div className="mt-4 text-sm text-[var(--foreground-muted)]">
+                              Progress to target:{" "}
+                              <span className="font-semibold text-[var(--foreground)]">
+                                {numberFmt(completion)}%
+                              </span>
                             </div>
                           </div>
                         </div>
@@ -705,27 +764,34 @@ export default function DashboardPage() {
             <SectionCard
               title="Execution Pulse"
               subtitle="Open work that still needs attention"
-              className="bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.03))]"
             >
               {executionPulse.length ? (
                 <div className="grid gap-3">
                   {executionPulse.map((task) => (
                     <div
                       key={task.id}
-                      className="rounded-[20px] border border-white/10 bg-black/20 p-4"
+                      className="rounded-[20px] border border-[var(--border)] bg-[var(--card-soft)] p-4"
                     >
                       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                         <div className="min-w-0">
-                          <div className="font-semibold text-white">{task.title}</div>
+                          <div className="font-semibold text-[var(--foreground)]">
+                            {task.title}
+                          </div>
                           <div className="mt-2 flex flex-wrap items-center gap-2">
-                            <StatusBadge tone={toneFromStatus(task.status)}>{task.status}</StatusBadge>
-                            <StatusBadge tone={taskUrgencyTone(task.priority)}>{task.priority}</StatusBadge>
-                            <span className="text-xs text-white/42">
+                            <StatusBadge tone={toneFromStatus(task.status)}>
+                              {task.status}
+                            </StatusBadge>
+                            <StatusBadge tone={taskUrgencyTone(task.priority)}>
+                              {task.priority}
+                            </StatusBadge>
+                            <span className="text-xs text-[var(--foreground-faint)]">
                               {task.department_name ?? "Company-wide"}
                             </span>
                           </div>
                         </div>
-                        <div className="text-sm text-white/52">Due {fmtDate(task.due_date)}</div>
+                        <div className="text-sm text-[var(--foreground-muted)]">
+                          Due {fmtDate(task.due_date)}
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -743,30 +809,33 @@ export default function DashboardPage() {
             <SectionCard
               title="Objectives Overview"
               subtitle="Strategic objectives currently under the most pressure"
-              className="bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.03))]"
             >
               {topObjectives.length ? (
                 <div className="grid gap-3">
                   {topObjectives.map((objective) => (
                     <div
                       key={objective.id}
-                      className="rounded-[20px] border border-white/10 bg-black/20 p-4"
+                      className="rounded-[20px] border border-[var(--border)] bg-[var(--card-soft)] p-4"
                     >
                       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                         <div className="min-w-0">
-                          <div className="font-semibold text-white">{objective.title}</div>
+                          <div className="font-semibold text-[var(--foreground)]">
+                            {objective.title}
+                          </div>
                           <div className="mt-2 flex flex-wrap items-center gap-2">
                             <StatusBadge tone={toneFromStatus(objective.status)}>
                               {objective.status}
                             </StatusBadge>
-                            <span className="text-xs text-white/42">
+                            <span className="text-xs text-[var(--foreground-faint)]">
                               {objective.department_name ?? "Company-wide"}
                             </span>
-                            <span className="text-xs text-white/42">{objective.okr_count} OKRs</span>
+                            <span className="text-xs text-[var(--foreground-faint)]">
+                              {objective.okr_count} OKRs
+                            </span>
                           </div>
                         </div>
                         <div className="min-w-[190px]">
-                          <div className="mb-2 text-right text-xl font-black tracking-[-0.03em] text-white">
+                          <div className="mb-2 text-right text-xl font-black tracking-[-0.03em] text-[var(--foreground)]">
                             {numberFmt(objective.progress)}%
                           </div>
                           <ProgressBar value={objective.progress} />
@@ -786,7 +855,7 @@ export default function DashboardPage() {
             <SectionCard
               title="Fast Actions"
               subtitle="Move directly into the next useful workflow"
-              className="bg-[linear-gradient(180deg,rgba(124,58,237,0.12),rgba(255,255,255,0.03))]"
+              className="bg-[linear-gradient(180deg,rgba(109,94,252,0.08),rgba(55,207,255,0.03))]"
             >
               <div className="grid gap-3">
                 <QuickLinkCard
@@ -829,20 +898,15 @@ function InsightMetric({
   hint: string;
   tone: "success" | "warning" | "danger" | "info";
 }) {
-  const toneMap = {
-    success: "border-emerald-400/20 bg-emerald-400/10",
-    warning: "border-amber-400/20 bg-amber-400/10",
-    danger: "border-red-400/20 bg-red-400/10",
-    info: "border-sky-400/20 bg-sky-400/10",
-  } as const;
-
   return (
-    <div className={`rounded-[22px] border p-4 ${toneMap[tone]}`}>
-      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/42">
+    <div className={`rounded-[22px] border p-4 ${tonePanelClass(tone)}`}>
+      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
         {label}
       </div>
-      <div className="mt-3 text-3xl font-black tracking-[-0.03em] text-white">{value}</div>
-      <div className="mt-2 text-sm text-white/62">{hint}</div>
+      <div className="mt-3 text-3xl font-black tracking-[-0.03em] text-[var(--foreground)]">
+        {value}
+      </div>
+      <div className="mt-2 text-sm text-[var(--foreground-muted)]">{hint}</div>
     </div>
   );
 }
@@ -855,9 +919,9 @@ function SummaryStrip({
   value: string;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 rounded-[18px] border border-white/10 bg-black/20 px-4 py-3">
-      <span className="text-sm text-white/55">{label}</span>
-      <span className="text-sm font-semibold text-white">{value}</span>
+    <div className="flex items-center justify-between gap-4 rounded-[18px] border border-[var(--border)] bg-[var(--card-soft)] px-4 py-3">
+      <span className="text-sm text-[var(--foreground-muted)]">{label}</span>
+      <span className="text-sm font-semibold text-[var(--foreground)]">{value}</span>
     </div>
   );
 }
@@ -872,7 +936,7 @@ function ActionChip({
   return (
     <Link
       href={href}
-      className="inline-flex h-11 items-center justify-center rounded-full border border-white/12 bg-white/[0.04] px-4 text-sm font-semibold text-white/88 transition hover:border-white/22 hover:bg-white/[0.08]"
+      className="inline-flex h-11 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-sm font-semibold text-[var(--foreground-soft)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
     >
       {label}
     </Link>
@@ -889,28 +953,32 @@ function DepartmentBucket({
   rows: DepartmentRow[];
 }) {
   return (
-    <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
-      <div className="text-sm font-semibold text-white">{title}</div>
-      <div className="mt-1 text-sm text-white/48">{subtitle}</div>
+    <div className="rounded-[22px] border border-[var(--border)] bg-[var(--card-soft)] p-4">
+      <div className="text-sm font-semibold text-[var(--foreground)]">{title}</div>
+      <div className="mt-1 text-sm text-[var(--foreground-muted)]">{subtitle}</div>
 
       <div className="mt-4 grid gap-3">
         {rows.length ? (
           rows.map((row) => (
             <div
               key={`${title}-${row.id}`}
-              className="flex items-center justify-between gap-4 rounded-[16px] border border-white/8 bg-white/[0.03] px-4 py-3"
+              className="flex items-center justify-between gap-4 rounded-[16px] border border-[var(--border)] bg-[var(--card-subtle)] px-4 py-3"
             >
               <div className="min-w-0">
-                <div className="truncate text-sm font-semibold text-white">{row.name}</div>
-                <div className="mt-1 text-xs text-white/42">
+                <div className="truncate text-sm font-semibold text-[var(--foreground)]">
+                  {row.name}
+                </div>
+                <div className="mt-1 text-xs text-[var(--foreground-faint)]">
                   {row.open_tasks} open · {row.completed_tasks} completed
                 </div>
               </div>
-              <div className="text-sm font-semibold text-white">{numberFmt(row.score)}</div>
+              <div className="text-sm font-semibold text-[var(--foreground)]">
+                {numberFmt(row.score)}
+              </div>
             </div>
           ))
         ) : (
-          <div className="rounded-[16px] border border-white/8 bg-white/[0.03] px-4 py-3 text-sm text-white/48">
+          <div className="rounded-[16px] border border-[var(--border)] bg-[var(--card-subtle)] px-4 py-3 text-sm text-[var(--foreground-muted)]">
             No departments yet.
           </div>
         )}
@@ -930,20 +998,15 @@ function AlertRow({
   desc: string;
   tone: "success" | "warning" | "danger" | "info";
 }) {
-  const toneMap = {
-    success: "border-emerald-400/20 bg-emerald-400/10",
-    warning: "border-amber-400/20 bg-amber-400/10",
-    danger: "border-red-400/20 bg-red-400/10",
-    info: "border-sky-400/20 bg-sky-400/10",
-  } as const;
-
   return (
-    <div className={`rounded-[20px] border p-4 ${toneMap[tone]}`}>
+    <div className={`rounded-[20px] border p-4 ${tonePanelClass(tone)}`}>
       <div className="flex items-center justify-between gap-4">
-        <div className="text-sm font-semibold text-white">{title}</div>
-        <div className="text-lg font-black tracking-[-0.03em] text-white">{value}</div>
+        <div className="text-sm font-semibold text-[var(--foreground)]">{title}</div>
+        <div className="text-lg font-black tracking-[-0.03em] text-[var(--foreground)]">
+          {value}
+        </div>
       </div>
-      <div className="mt-2 text-sm text-white/62">{desc}</div>
+      <div className="mt-2 text-sm text-[var(--foreground-muted)]">{desc}</div>
     </div>
   );
 }
@@ -960,10 +1023,10 @@ function QuickLinkCard({
   return (
     <Link
       href={href}
-      className="rounded-[22px] border border-white/10 bg-black/20 p-4 transition hover:border-white/18 hover:bg-white/[0.05]"
+      className="rounded-[22px] border border-[var(--border)] bg-[var(--card-soft)] p-4 transition hover:border-[var(--border-strong)] hover:bg-[var(--card-strong)]"
     >
-      <div className="text-base font-semibold text-white">{title}</div>
-      <div className="mt-2 text-sm leading-6 text-white/58">{desc}</div>
+      <div className="text-base font-semibold text-[var(--foreground)]">{title}</div>
+      <div className="mt-2 text-sm leading-6 text-[var(--foreground-muted)]">{desc}</div>
     </Link>
   );
 }

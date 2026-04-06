@@ -121,9 +121,18 @@ function fmtDate(value?: string | null) {
 
 function toneForStatus(value?: string | null) {
   const clean = String(value ?? "").toLowerCase();
-  if (["sent", "emailed", "generated", "active"].includes(clean)) return "success" as const;
-  if (["pending", "warning"].includes(clean)) return "warning" as const;
-  if (["failed", "error"].includes(clean)) return "danger" as const;
+  if (["sent", "emailed", "generated", "active", "success", "completed"].includes(clean)) {
+    return "success" as const;
+  }
+  if (["pending", "queued", "running", "warning"].includes(clean)) {
+    return "warning" as const;
+  }
+  if (["failed", "error"].includes(clean)) {
+    return "danger" as const;
+  }
+  if (["processing", "building"].includes(clean)) {
+    return "info" as const;
+  }
   return "neutral" as const;
 }
 
@@ -136,6 +145,30 @@ function cadenceLabel(cadence: string) {
     default:
       return cadence.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
   }
+}
+
+function inputClass() {
+  return "h-12 w-full rounded-2xl border border-[var(--border)] bg-[var(--card)] px-4 text-[var(--foreground)] outline-none transition placeholder:text-[var(--foreground-faint)] focus:border-[var(--border-strong)]";
+}
+
+function textareaClass() {
+  return "min-h-[96px] w-full rounded-2xl border border-[var(--border)] bg-[var(--card)] px-4 py-3 text-[var(--foreground)] outline-none transition placeholder:text-[var(--foreground-faint)] focus:border-[var(--border-strong)]";
+}
+
+function selectClass() {
+  return "h-12 w-full rounded-2xl border border-[var(--border)] bg-[var(--card)] px-4 text-[var(--foreground)] outline-none transition focus:border-[var(--border-strong)]";
+}
+
+function primaryButtonClass() {
+  return "inline-flex h-11 items-center justify-center rounded-full bg-[var(--foreground)] px-5 text-sm font-semibold text-[var(--background)] transition hover:opacity-90 disabled:opacity-60";
+}
+
+function secondaryButtonClass() {
+  return "inline-flex h-11 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-5 text-sm font-semibold text-[var(--foreground)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)] disabled:opacity-60";
+}
+
+function chipClass() {
+  return "rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-3 py-1 text-xs font-semibold text-[var(--foreground-soft)]";
 }
 
 export default function ReportsPage() {
@@ -241,7 +274,10 @@ export default function ReportsPage() {
         custom_date_from: form.custom_date_from || null,
         custom_date_to: form.custom_date_to || null,
         department_id: form.department_id || null,
-        recipients: form.recipients.split(",").map((v) => v.trim()).filter(Boolean),
+        recipients: form.recipients
+          .split(",")
+          .map((v) => v.trim())
+          .filter(Boolean),
         include_company_summary: form.include_company_summary,
         include_department_breakdown: form.include_department_breakdown,
         include_objectives: form.include_objectives,
@@ -285,10 +321,13 @@ export default function ReportsPage() {
     try {
       const session = await ensureAuth();
       if (!session) return;
-      const res = await fetch(`/api/o/${encodeURIComponent(orgSlug)}/reports/${encodeURIComponent(id)}/generate`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      });
+      const res = await fetch(
+        `/api/o/${encodeURIComponent(orgSlug)}/reports/${encodeURIComponent(id)}/generate`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        },
+      );
       const raw = await res.text();
       const parsed = (await safeParseJson(raw)) as { ok?: boolean; error?: string } | null;
       if (!res.ok || !parsed?.ok) {
@@ -310,10 +349,13 @@ export default function ReportsPage() {
     try {
       const session = await ensureAuth();
       if (!session) return;
-      const res = await fetch(`/api/o/${encodeURIComponent(orgSlug)}/reports/${encodeURIComponent(id)}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      });
+      const res = await fetch(
+        `/api/o/${encodeURIComponent(orgSlug)}/reports/${encodeURIComponent(id)}`,
+        {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        },
+      );
       const raw = await res.text();
       const parsed = (await safeParseJson(raw)) as { ok?: boolean; error?: string } | null;
       if (!res.ok || !parsed?.ok) {
@@ -335,10 +377,13 @@ export default function ReportsPage() {
     try {
       const session = await ensureAuth();
       if (!session) return;
-      const res = await fetch(`/api/o/${encodeURIComponent(orgSlug)}/reports/${encodeURIComponent(id)}/export?format=${format}`, {
-        method: "GET",
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      });
+      const res = await fetch(
+        `/api/o/${encodeURIComponent(orgSlug)}/reports/${encodeURIComponent(id)}/export?format=${format}`,
+        {
+          method: "GET",
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        },
+      );
       if (!res.ok) {
         const raw = await res.text();
         const parsed = (await safeParseJson(raw)) as { error?: string } | null;
@@ -376,17 +421,13 @@ export default function ReportsPage() {
       sessionEmail={sessionEmail}
       topActions={
         <div className="flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            onClick={() => void loadReports()}
-            className="inline-flex h-11 items-center justify-center rounded-full border border-white/12 bg-white/5 px-5 text-sm font-medium text-white/90 transition hover:border-white/20 hover:bg-white/8"
-          >
+          <button type="button" onClick={() => void loadReports()} className={secondaryButtonClass()}>
             Refresh
           </button>
           <button
             type="button"
             onClick={() => router.push(`/o/${encodeURIComponent(orgSlug)}/dashboard`)}
-            className="inline-flex h-11 items-center justify-center rounded-full bg-white px-5 text-sm font-semibold text-[#07090D] transition hover:bg-white/92"
+            className={primaryButtonClass()}
           >
             Back to dashboard
           </button>
@@ -396,35 +437,70 @@ export default function ReportsPage() {
       <AppPageHeader
         eyebrow={cycle ? `Q${cycle.quarter} ${cycle.year} · ${cycle.status}` : "No active cycle"}
         title="Reports"
-        description="Create default or custom reports, export them, auto-generate them, and email them straight from the workspace. Weekly, bi-weekly, monthly, quarterly, bi-annual, annual, or custom date windows."
+        description="Create default or custom reports, export them, auto-generate them, and email them straight from the workspace."
       />
 
       {(msg || okMsg) && (
         <div className="mb-6 grid gap-3">
-          {msg ? <div className="rounded-[20px] border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-100">{msg}</div> : null}
-          {okMsg ? <div className="rounded-[20px] border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">{okMsg}</div> : null}
+          {msg ? (
+            <div className="rounded-[20px] border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-700 dark:text-red-100">
+              {msg}
+            </div>
+          ) : null}
+          {okMsg ? (
+            <div className="rounded-[20px] border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-100">
+              {okMsg}
+            </div>
+          ) : null}
         </div>
       )}
 
-      <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard title="Report definitions" value={stats.definitions} hint="Reusable saved reports" />
-        <StatCard title="Generated runs" value={stats.generated} hint="Stored report outputs" tone="info" />
-        <StatCard title="Email deliveries" value={stats.emailed} hint="Runs emailed successfully" tone="success" />
-        <StatCard title="Auto-email enabled" value={stats.autoEmails} hint="Definitions that send email automatically" tone="warning" />
-      </div>
+      <section className="mb-6 overflow-hidden rounded-[30px] border border-[var(--border)] bg-[var(--background-panel)] p-6 alamin-shadow">
+        <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+          <div>
+            <div className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--foreground-faint)]">
+              <span className="h-2 w-2 rounded-full bg-[var(--accent-2)]" />
+              Reporting engine
+            </div>
+
+            <h2 className="mt-5 text-3xl font-black tracking-[-0.04em] text-[var(--foreground)]">
+              Automate reporting without turning it into spreadsheet theater.
+            </h2>
+
+            <p className="mt-4 max-w-3xl text-base leading-7 text-[var(--foreground-muted)]">
+              Create reusable report definitions, choose what goes inside, auto-generate on cadence,
+              export to JSON or CSV, and email leadership directly from the product.
+            </p>
+
+            <div className="mt-6 flex flex-wrap gap-2">
+              <span className={chipClass()}>Weekly to annual cadence</span>
+              <span className={chipClass()}>Custom report windows</span>
+              <span className={chipClass()}>Export + email delivery</span>
+              <span className={chipClass()}>Department-scoped reporting</span>
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-2">
+            <StatCard title="Report definitions" value={stats.definitions} hint="Reusable saved reports" />
+            <StatCard title="Generated runs" value={stats.generated} hint="Stored report outputs" tone="info" />
+            <StatCard title="Email deliveries" value={stats.emailed} hint="Runs emailed successfully" tone="success" />
+            <StatCard title="Auto-email enabled" value={stats.autoEmails} hint="Definitions that send automatically" tone="warning" />
+          </div>
+        </div>
+      </section>
 
       <div className="grid gap-6 xl:grid-cols-[1.02fr_0.98fr]">
         <SectionCard
           title="Create report"
           subtitle="Default cadences or a custom report window"
-          className="bg-[linear-gradient(180deg,rgba(124,58,237,0.08),rgba(255,255,255,0.03))]"
+          className="bg-[var(--background-panel)]"
           actions={
             canManage ? (
               <button
                 type="button"
                 onClick={() => void createReport()}
                 disabled={saving}
-                className="inline-flex h-10 items-center justify-center rounded-full bg-white px-4 text-sm font-semibold text-[#07090D] transition hover:bg-white/92 disabled:opacity-60"
+                className={primaryButtonClass()}
               >
                 {saving ? "Saving..." : "Create report"}
               </button>
@@ -432,15 +508,28 @@ export default function ReportsPage() {
           }
         >
           {!canManage ? (
-            <EmptyState title="Report creation disabled" description="Employees can view report runs, but only managers and above can create or manage report definitions." />
+            <EmptyState
+              title="Report creation disabled"
+              description="Employees can view report runs, but only managers and above can create or manage report definitions."
+            />
           ) : (
             <div className="grid gap-4">
               <div className="grid gap-4 md:grid-cols-2">
                 <Field label="Report title">
-                  <input value={form.title} onChange={(e) => updateForm("title", e.target.value)} className="h-12 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition focus:border-white/20" placeholder="Weekly executive report" />
+                  <input
+                    value={form.title}
+                    onChange={(e) => updateForm("title", e.target.value)}
+                    className={inputClass()}
+                    placeholder="Weekly executive report"
+                  />
                 </Field>
+
                 <Field label="Cadence">
-                  <select value={form.cadence} onChange={(e) => updateForm("cadence", e.target.value)} className="h-12 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition focus:border-white/20">
+                  <select
+                    value={form.cadence}
+                    onChange={(e) => updateForm("cadence", e.target.value)}
+                    className={selectClass()}
+                  >
                     <option value="weekly">Weekly</option>
                     <option value="bi_weekly">Bi-weekly</option>
                     <option value="monthly">Monthly</option>
@@ -453,33 +542,67 @@ export default function ReportsPage() {
               </div>
 
               <Field label="Description">
-                <textarea value={form.description} onChange={(e) => updateForm("description", e.target.value)} className="min-h-[96px] rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none transition focus:border-white/20" placeholder="What this report is supposed to summarize." />
+                <textarea
+                  value={form.description}
+                  onChange={(e) => updateForm("description", e.target.value)}
+                  className={textareaClass()}
+                  placeholder="What this report is supposed to summarize."
+                />
               </Field>
 
               <div className="grid gap-4 md:grid-cols-2">
                 <Field label="Department scope">
-                  <select value={form.department_id} onChange={(e) => updateForm("department_id", e.target.value)} className="h-12 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition focus:border-white/20">
+                  <select
+                    value={form.department_id}
+                    onChange={(e) => updateForm("department_id", e.target.value)}
+                    className={selectClass()}
+                  >
                     <option value="">All departments</option>
                     {departments.map((department) => (
-                      <option key={department.id} value={department.id}>{department.name}</option>
+                      <option key={department.id} value={department.id}>
+                        {department.name}
+                      </option>
                     ))}
                   </select>
                 </Field>
+
                 <Field label="Recipients">
-                  <input value={form.recipients} onChange={(e) => updateForm("recipients", e.target.value)} className="h-12 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition focus:border-white/20" placeholder="ceo@company.com, ops@company.com" />
+                  <input
+                    value={form.recipients}
+                    onChange={(e) => updateForm("recipients", e.target.value)}
+                    className={inputClass()}
+                    placeholder="ceo@company.com, ops@company.com"
+                  />
                 </Field>
               </div>
 
               {form.cadence === "custom" ? (
                 <div className="grid gap-4 md:grid-cols-3">
                   <Field label="Custom label">
-                    <input value={form.custom_label} onChange={(e) => updateForm("custom_label", e.target.value)} className="h-12 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition focus:border-white/20" placeholder="Board review" />
+                    <input
+                      value={form.custom_label}
+                      onChange={(e) => updateForm("custom_label", e.target.value)}
+                      className={inputClass()}
+                      placeholder="Board review"
+                    />
                   </Field>
+
                   <Field label="From date">
-                    <input type="date" value={form.custom_date_from} onChange={(e) => updateForm("custom_date_from", e.target.value)} className="h-12 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition focus:border-white/20" />
+                    <input
+                      type="date"
+                      value={form.custom_date_from}
+                      onChange={(e) => updateForm("custom_date_from", e.target.value)}
+                      className={inputClass()}
+                    />
                   </Field>
+
                   <Field label="To date">
-                    <input type="date" value={form.custom_date_to} onChange={(e) => updateForm("custom_date_to", e.target.value)} className="h-12 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition focus:border-white/20" />
+                    <input
+                      type="date"
+                      value={form.custom_date_to}
+                      onChange={(e) => updateForm("custom_date_to", e.target.value)}
+                      className={inputClass()}
+                    />
                   </Field>
                 </div>
               ) : null}
@@ -504,28 +627,48 @@ export default function ReportsPage() {
         <SectionCard
           title="Saved reports"
           subtitle="Definitions with default or custom generation windows"
-          className="bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.03))]"
+          className="bg-[var(--background-panel)]"
         >
           {loading ? (
-            <div className="text-sm text-white/55">Loading reports...</div>
+            <div className="grid gap-4">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="h-44 animate-pulse rounded-[24px] border border-[var(--border)] bg-[var(--card)]"
+                />
+              ))}
+            </div>
           ) : definitions.length === 0 ? (
-            <EmptyState title="No reports yet" description="Create a report definition to start generating, exporting, and emailing reports." />
+            <EmptyState
+              title="No reports yet"
+              description="Create a report definition to start generating, exporting, and emailing reports."
+            />
           ) : (
             <div className="grid gap-4">
               {definitions.map((definition) => {
                 const latestRun = runsByDefinition.get(definition.id)?.[0] ?? null;
                 return (
-                  <div key={definition.id} className="rounded-[24px] border border-white/10 bg-black/20 p-5">
+                  <div
+                    key={definition.id}
+                    className="rounded-[24px] border border-[var(--border)] bg-[var(--card)] p-5 alamin-shadow"
+                  >
                     <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                      <div>
+                      <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <div className="text-lg font-bold text-white">{definition.title}</div>
+                          <div className="text-lg font-bold text-[var(--foreground)]">{definition.title}</div>
                           <StatusBadge tone="info">{cadenceLabel(definition.cadence)}</StatusBadge>
                           {definition.auto_email ? <StatusBadge tone="success">Auto email</StatusBadge> : null}
                           {definition.auto_generate ? <StatusBadge>Auto generate</StatusBadge> : null}
+                          {definition.department_id ? <StatusBadge tone="warning">Scoped</StatusBadge> : null}
                         </div>
-                        {definition.description ? <div className="mt-2 text-sm leading-6 text-white/58">{definition.description}</div> : null}
-                        <div className="mt-3 flex flex-wrap gap-2 text-xs text-white/45">
+
+                        {definition.description ? (
+                          <div className="mt-2 text-sm leading-6 text-[var(--foreground-muted)]">
+                            {definition.description}
+                          </div>
+                        ) : null}
+
+                        <div className="mt-3 flex flex-wrap gap-2 text-xs text-[var(--foreground-faint)]">
                           <span>Recipients: {(definition.recipients ?? []).join(", ") || "—"}</span>
                           <span>•</span>
                           <span>Last generated: {fmtDate(definition.last_generated_at)}</span>
@@ -533,22 +676,63 @@ export default function ReportsPage() {
                       </div>
 
                       <div className="flex flex-wrap gap-2">
-                        <button type="button" onClick={() => void generateNow(definition.id)} disabled={runningId === definition.id} className="rounded-full border border-white/12 bg-white/5 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/8 disabled:opacity-60">{runningId === definition.id ? "Running..." : "Generate now"}</button>
-                        <button type="button" onClick={() => void exportReport(definition.id, "json")} disabled={runningId === definition.id} className="rounded-full border border-white/12 bg-white/5 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/8 disabled:opacity-60">Export JSON</button>
-                        <button type="button" onClick={() => void exportReport(definition.id, "csv")} disabled={runningId === definition.id} className="rounded-full border border-white/12 bg-white/5 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/8 disabled:opacity-60">Export CSV</button>
-                        {canManage ? <button type="button" onClick={() => void deactivateReport(definition.id)} disabled={runningId === definition.id} className="rounded-full border border-red-400/20 bg-red-400/10 px-4 py-2 text-sm font-semibold text-red-100 transition hover:bg-red-400/14 disabled:opacity-60">Deactivate</button> : null}
+                        <button
+                          type="button"
+                          onClick={() => void generateNow(definition.id)}
+                          disabled={runningId === definition.id}
+                          className={secondaryButtonClass()}
+                        >
+                          {runningId === definition.id ? "Running..." : "Generate now"}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => void exportReport(definition.id, "json")}
+                          disabled={runningId === definition.id}
+                          className={secondaryButtonClass()}
+                        >
+                          Export JSON
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => void exportReport(definition.id, "csv")}
+                          disabled={runningId === definition.id}
+                          className={secondaryButtonClass()}
+                        >
+                          Export CSV
+                        </button>
+
+                        {canManage ? (
+                          <button
+                            type="button"
+                            onClick={() => void deactivateReport(definition.id)}
+                            disabled={runningId === definition.id}
+                            className="inline-flex h-11 items-center justify-center rounded-full border border-red-500/20 bg-red-500/10 px-5 text-sm font-semibold text-red-700 transition hover:bg-red-500/15 disabled:opacity-60 dark:text-red-100"
+                          >
+                            Deactivate
+                          </button>
+                        ) : null}
                       </div>
                     </div>
 
                     {latestRun ? (
-                      <div className="mt-4 rounded-[18px] border border-white/10 bg-white/[0.03] p-4">
+                      <div className="mt-4 rounded-[18px] border border-[var(--border)] bg-[var(--card-subtle)] p-4">
                         <div className="flex flex-wrap items-center gap-2">
                           <StatusBadge tone={toneForStatus(latestRun.status)}>{latestRun.status}</StatusBadge>
                           <StatusBadge tone={toneForStatus(latestRun.email_status)}>{latestRun.email_status}</StatusBadge>
                         </div>
-                        <div className="mt-3 text-sm text-white/60">{latestRun.period_label}</div>
-                        <div className="mt-2 text-xs text-white/45">Generated {fmtDate(latestRun.generated_at)}</div>
-                        {latestRun.email_error ? <div className="mt-2 text-xs text-red-200">Email error: {latestRun.email_error}</div> : null}
+
+                        <div className="mt-3 text-sm text-[var(--foreground-soft)]">{latestRun.period_label}</div>
+                        <div className="mt-2 text-xs text-[var(--foreground-faint)]">
+                          Generated {fmtDate(latestRun.generated_at)}
+                        </div>
+
+                        {latestRun.email_error ? (
+                          <div className="mt-2 text-xs text-red-700 dark:text-red-200">
+                            Email error: {latestRun.email_error}
+                          </div>
+                        ) : null}
                       </div>
                     ) : null}
                   </div>
@@ -563,32 +747,64 @@ export default function ReportsPage() {
         <SectionCard
           title="Recent runs"
           subtitle="Generated outputs, export history, and email delivery state"
-          className="bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.03))]"
+          className="bg-[var(--background-panel)]"
         >
           {loading ? (
-            <div className="text-sm text-white/55">Loading runs...</div>
+            <div className="grid gap-3">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="h-28 animate-pulse rounded-[20px] border border-[var(--border)] bg-[var(--card)]"
+                />
+              ))}
+            </div>
           ) : runs.length === 0 ? (
-            <EmptyState title="No runs generated yet" description="As soon as a report generates, the latest output will appear here." />
+            <EmptyState
+              title="No runs generated yet"
+              description="As soon as a report generates, the latest output will appear here."
+            />
           ) : (
             <div className="grid gap-3">
               {runs.map((run) => {
                 const definition = definitions.find((row) => row.id === run.report_definition_id);
                 return (
-                  <div key={run.id} className="rounded-[20px] border border-white/10 bg-black/20 p-4">
+                  <div
+                    key={run.id}
+                    className="rounded-[20px] border border-[var(--border)] bg-[var(--card)] p-4"
+                  >
                     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                      <div>
-                        <div className="font-semibold text-white">{definition?.title ?? run.report_definition_id}</div>
-                        <div className="mt-1 text-sm text-white/55">{run.period_label}</div>
+                      <div className="min-w-0">
+                        <div className="font-semibold text-[var(--foreground)]">
+                          {definition?.title ?? run.report_definition_id}
+                        </div>
+                        <div className="mt-1 text-sm text-[var(--foreground-muted)]">
+                          {run.period_label}
+                        </div>
                         <div className="mt-2 flex flex-wrap gap-2">
                           <StatusBadge tone={toneForStatus(run.status)}>{run.status}</StatusBadge>
                           <StatusBadge tone={toneForStatus(run.email_status)}>{run.email_status}</StatusBadge>
-                          {(run.exported_formats ?? []).map((format) => <StatusBadge key={format}>{format}</StatusBadge>)}
+                          {(run.exported_formats ?? []).map((format) => (
+                            <StatusBadge key={format}>{format}</StatusBadge>
+                          ))}
                         </div>
                       </div>
-                      <div className="text-sm text-white/50">{fmtDate(run.generated_at)}</div>
+
+                      <div className="text-sm text-[var(--foreground-faint)]">
+                        {fmtDate(run.generated_at)}
+                      </div>
                     </div>
-                    {(run.emailed_to ?? []).length ? <div className="mt-3 text-sm text-white/60">Sent to: {(run.emailed_to ?? []).join(", ")}</div> : null}
-                    {run.email_error ? <div className="mt-2 text-sm text-red-200">Email error: {run.email_error}</div> : null}
+
+                    {(run.emailed_to ?? []).length ? (
+                      <div className="mt-3 text-sm text-[var(--foreground-muted)]">
+                        Sent to: {(run.emailed_to ?? []).join(", ")}
+                      </div>
+                    ) : null}
+
+                    {run.email_error ? (
+                      <div className="mt-2 text-sm text-red-700 dark:text-red-200">
+                        Email error: {run.email_error}
+                      </div>
+                    ) : null}
                   </div>
                 );
               })}
@@ -602,18 +818,38 @@ export default function ReportsPage() {
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <label className="grid gap-2 text-sm text-white/70">
-      <span>{label}</span>
+    <label className="grid gap-2">
+      <span className="text-sm font-medium text-[var(--foreground-soft)]">{label}</span>
       {children}
     </label>
   );
 }
 
-function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (value: boolean) => void }) {
+function Toggle({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (value: boolean) => void;
+}) {
   return (
-    <button type="button" onClick={() => onChange(!checked)} className="flex items-center justify-between rounded-[18px] border border-white/10 bg-black/20 px-4 py-3 text-left transition hover:bg-white/6">
-      <span className="text-sm font-medium text-white">{label}</span>
-      <span className={checked ? "rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-emerald-200" : "rounded-full border border-white/12 bg-white/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-white/70"}>{checked ? "On" : "Off"}</span>
+    <button
+      type="button"
+      onClick={() => onChange(!checked)}
+      className="flex items-center justify-between rounded-[18px] border border-[var(--border)] bg-[var(--card)] px-4 py-3 text-left transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
+    >
+      <span className="text-sm font-medium text-[var(--foreground)]">{label}</span>
+      <span
+        className={
+          checked
+            ? "rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-emerald-700 dark:text-emerald-200"
+            : "rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--foreground-soft)]"
+        }
+      >
+        {checked ? "On" : "Off"}
+      </span>
     </button>
   );
 }

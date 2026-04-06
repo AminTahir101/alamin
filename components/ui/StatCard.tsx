@@ -13,15 +13,15 @@ type StatCardProps = {
 function toneClasses(tone: Tone) {
   switch (tone) {
     case "success":
-      return "border-emerald-400/20 bg-emerald-400/10";
+      return "border-emerald-500/20 bg-[linear-gradient(180deg,rgba(34,197,94,0.10),rgba(34,197,94,0.04))]";
     case "warning":
-      return "border-amber-400/20 bg-amber-400/10";
+      return "border-amber-500/20 bg-[linear-gradient(180deg,rgba(245,158,11,0.10),rgba(245,158,11,0.04))]";
     case "danger":
-      return "border-red-400/20 bg-red-400/10";
+      return "border-red-500/20 bg-[linear-gradient(180deg,rgba(239,68,68,0.10),rgba(239,68,68,0.04))]";
     case "info":
-      return "border-sky-400/20 bg-sky-400/10";
+      return "border-sky-500/20 bg-[linear-gradient(180deg,rgba(56,189,248,0.10),rgba(56,189,248,0.04))]";
     default:
-      return "border-white/10 bg-white/5";
+      return "border-[var(--border)] bg-[var(--card)]";
   }
 }
 
@@ -33,17 +33,19 @@ function StatCard({
   tone = "default",
 }: StatCardProps) {
   return (
-    <div className={`rounded-[20px] border p-4 md:p-5 ${toneClasses(tone)}`}>
-      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/42">
+    <div className={`rounded-[24px] border p-4 md:p-5 ${toneClasses(tone)} alamin-shadow`}>
+      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--foreground-faint)]">
         {title}
       </div>
 
-      <div className="mt-3 text-3xl font-black tracking-[-0.03em] text-white">
+      <div className="mt-3 text-3xl font-black tracking-[-0.03em] text-[var(--foreground)]">
         {value}
       </div>
 
-      {hint ? <div className="mt-2 text-sm text-white/58">{hint}</div> : null}
-      {trend ? <div className="mt-3 text-xs font-medium text-white/42">{trend}</div> : null}
+      {hint ? <div className="mt-2 text-sm text-[var(--foreground-muted)]">{hint}</div> : null}
+      {trend ? (
+        <div className="mt-3 text-xs font-medium text-[var(--foreground-faint)]">{trend}</div>
+      ) : null}
     </div>
   );
 }
