@@ -56,7 +56,7 @@ async function waitForSession(timeoutMs = 4000): Promise<Session | null> {
           if (unsub) unsub();
           resolve(session);
         }
-      },
+      }
     );
 
     unsub = () => data.subscription.unsubscribe();
@@ -100,62 +100,6 @@ async function fetchUserOrgs(accessToken: string): Promise<Org[]> {
   return Array.isArray(parsed.orgs) ? parsed.orgs : [];
 }
 
-function ThemeToggle() {
-  const [mounted, setMounted] = useState(false);
-  const [theme, setTheme] = useState<"night" | "daylight">("night");
-
-  useEffect(() => {
-    const timeout = window.setTimeout(() => {
-      const stored = window.localStorage.getItem("alamin-theme");
-      setTheme(stored === "daylight" ? "daylight" : "night");
-      setMounted(true);
-    }, 0);
-
-    return () => window.clearTimeout(timeout);
-  }, []);
-
-  useEffect(() => {
-    if (!mounted) return;
-
-    const root = document.documentElement;
-    root.setAttribute("data-theme", theme);
-    root.classList.toggle("dark", theme === "night");
-    window.localStorage.setItem("alamin-theme", theme);
-  }, [theme, mounted]);
-
-  if (!mounted) {
-    return (
-      <div className="alamin-theme-toggle">
-        <button type="button" data-active={false}>
-          Daylight
-        </button>
-        <button type="button" data-active={true}>
-          Night
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="alamin-theme-toggle">
-      <button
-        type="button"
-        data-active={theme === "daylight"}
-        onClick={() => setTheme("daylight")}
-      >
-        Daylight
-      </button>
-      <button
-        type="button"
-        data-active={theme === "night"}
-        onClick={() => setTheme("night")}
-      >
-        Night
-      </button>
-    </div>
-  );
-}
-
 export default function AuthPage() {
   const router = useRouter();
 
@@ -187,6 +131,15 @@ export default function AuthPage() {
       setMsg(null);
 
       try {
+        const user = session.user;
+        const invitedSlug = String(user.user_metadata?.invited_to_org_slug ?? "").trim();
+
+        if (invitedSlug) {
+          rememberOrgSlug(invitedSlug);
+          router.replace(`/o/${encodeURIComponent(invitedSlug)}/onboarding`);
+          return;
+        }
+
         const availableOrgs = await fetchUserOrgs(session.access_token);
         setOrgs(availableOrgs);
 
@@ -210,16 +163,14 @@ export default function AuthPage() {
         }
 
         setShowOrgPicker(false);
-        setMsg(
-          "No organization membership was found for this account. Access is restricted to approved paid users only. Contact your administrator.",
-        );
+        setMsg("No organization membership was found for this account.");
       } catch (err: unknown) {
         setMsg(getErrorMessage(err, "Failed to resolve workspace"));
       } finally {
         setResolvingTenant(false);
       }
     },
-    [router],
+    [router]
   );
 
   useEffect(() => {
@@ -254,13 +205,13 @@ export default function AuthPage() {
     }
 
     if (!envHint.url || !envHint.key) {
-      setMsg("Supabase env is missing. Check .env.local and restart npm run dev.");
+      setMsg("Supabase env is missing. Check .env.local and restart the dev server.");
       return;
     }
 
     if (envHint.looksLikePublishable) {
       setMsg(
-        "Your NEXT_PUBLIC_SUPABASE_ANON_KEY is wrong. Use the public ANON JWT key that starts with eyJ, then restart the dev server.",
+        "Your NEXT_PUBLIC_SUPABASE_ANON_KEY is wrong. Use the public ANON JWT key that starts with eyJ, then restart the dev server."
       );
       return;
     }
@@ -276,6 +227,7 @@ export default function AuthPage() {
       if (error) throw error;
 
       const session = await waitForSession(3500);
+
       if (session) {
         await resolveTenantAndRoute(session);
       } else {
@@ -286,7 +238,7 @@ export default function AuthPage() {
 
       if (m.toLowerCase().includes("failed to fetch")) {
         setMsg(
-          "Failed to reach Supabase.\n\n1) Use the ANON JWT key that starts with eyJ.\n2) Restart dev server after editing .env.local.\n3) Disable privacy extensions on localhost.\n4) Ensure NEXT_PUBLIC_SUPABASE_URL is exactly https://<project>.supabase.co",
+          "Failed to reach Supabase.\n\n1) Use the ANON JWT key that starts with eyJ.\n2) Restart dev server after editing .env.local.\n3) Disable privacy extensions on localhost.\n4) Ensure NEXT_PUBLIC_SUPABASE_URL is exactly https://<project>.supabase.co"
         );
       } else {
         setMsg(m);
@@ -363,9 +315,6 @@ export default function AuthPage() {
           </nav>
 
           <div className="flex items-center gap-3">
-            <div className="hidden md:block">
-              <ThemeToggle />
-            </div>
             <Link
               href="/"
               className="inline-flex h-11 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-5 text-sm font-medium text-[var(--foreground-soft)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
@@ -380,37 +329,37 @@ export default function AuthPage() {
         <section className="flex flex-col justify-center">
           <div className="inline-flex w-fit items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-xs font-medium text-[var(--foreground-muted)]">
             <span className="h-2 w-2 rounded-full bg-[var(--accent-2)]" />
-            Secure workspace access for paid customers only
+            Secure workspace access for strategy, execution, and AI
           </div>
 
           <h1 className="mt-6 max-w-3xl text-5xl font-semibold leading-[1.02] tracking-tight text-[var(--foreground)] md:text-6xl">
-            Access your company
+            Access your company workspace
             <span className="block bg-[linear-gradient(135deg,var(--foreground)_0%,#9b8cff_38%,#64dcff_100%)] bg-clip-text text-transparent">
-              execution workspace.
+              and continue execution.
             </span>
           </h1>
 
           <p className="mt-6 max-w-2xl text-lg leading-8 text-[var(--foreground-muted)]">
-            Log in to your approved ALAMIN workspace. Public signup has been removed.
-            New companies enter through demo qualification and paid onboarding only.
+            Log in to your workspace. If you were invited by your company admin, you will be taken
+            directly into your organization onboarding flow.
           </p>
 
           <div className="mt-10 grid gap-4 sm:grid-cols-3">
-            <InfoPill value="Paid" label="customer access only" />
-            <InfoPill value="AI" label="execution intelligence" />
-            <InfoPill value="Secure" label="workspace isolation" />
+            <InfoPill value="1" label="workspace per organization" />
+            <InfoPill value="AI" label="strategy to execution setup" />
+            <InfoPill value="Secure" label="organization email access" />
           </div>
 
           <div className="mt-10 grid gap-4 md:grid-cols-2">
             <SignalCard
-              eyebrow="Access model"
-              title="No public signup"
-              desc="Only approved paid users can log in. New companies must request a demo first."
+              eyebrow="Invited users"
+              title="Onboarding redirect built in"
+              desc="If your account was invited into a new organization, login routes you directly into that onboarding flow."
             />
             <SignalCard
-              eyebrow="Workspace routing"
-              title="Tenant-aware access"
-              desc="Users are routed into the correct organization workspace after successful authentication."
+              eyebrow="Existing customers"
+              title="Multi-org access supported"
+              desc="If your account belongs to more than one organization, you can choose which company workspace to enter."
             />
           </div>
         </section>
@@ -521,40 +470,25 @@ export default function AuthPage() {
 
                   <div className="mt-6 rounded-[22px] border border-[var(--border)] bg-[var(--card-subtle)] p-4">
                     <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
-                      Need access?
+                      What you get inside
                     </div>
                     <div className="mt-4 grid gap-3 sm:grid-cols-2">
                       <MiniFeature
-                        title="Existing customer login"
-                        desc="Use your approved work account to enter your workspace."
+                        title="Structured onboarding"
+                        desc="Invited users route directly into the right company onboarding flow."
                       />
                       <MiniFeature
-                        title="No public signup"
-                        desc="New companies must request a demo and complete paid onboarding."
+                        title="Organization email only"
+                        desc="Company access stays tied to the right workspace and membership layer."
                       />
                       <MiniFeature
-                        title="Demo-first access"
-                        desc="Qualification happens before workspace access is granted."
+                        title="AI-ready setup"
+                        desc="Prepare strategy, departments, and ownership before execution begins."
                       />
                       <MiniFeature
-                        title="Tenant-safe routing"
-                        desc="Every user is routed only to organizations they belong to."
+                        title="Tenant-safe access"
+                        desc="Keep company data scoped to the right workspace."
                       />
-                    </div>
-
-                    <div className="mt-5 flex flex-wrap gap-3">
-                      <Link
-                        href="/demo"
-                        className="inline-flex h-11 items-center justify-center rounded-full bg-[var(--foreground)] px-5 text-sm font-semibold text-[var(--background)] transition hover:opacity-92"
-                      >
-                        Request demo
-                      </Link>
-                      <Link
-                        href="/"
-                        className="inline-flex h-11 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-5 text-sm font-medium text-[var(--foreground-soft)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
-                      >
-                        Back to landing page
-                      </Link>
                     </div>
                   </div>
                 </>
@@ -569,19 +503,14 @@ export default function AuthPage() {
 
 function FieldShell({
   label,
-  hint,
   children,
 }: {
   label: string;
-  hint?: string;
   children: React.ReactNode;
 }) {
   return (
     <div className="grid gap-2">
-      <div className="flex items-center justify-between gap-3">
-        <label className="text-sm font-medium text-[var(--foreground-soft)]">{label}</label>
-        {hint ? <span className="text-xs text-[var(--foreground-faint)]">{hint}</span> : null}
-      </div>
+      <label className="text-sm font-medium text-[var(--foreground-soft)]">{label}</label>
       {children}
     </div>
   );

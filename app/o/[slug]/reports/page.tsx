@@ -10,6 +10,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import StatusBadge from "@/components/ui/StatusBadge";
 import StatCard from "@/components/ui/StatCard";
 
+
 type Cycle = { id: string; year: number; quarter: number; status: string };
 type Department = { id: string; name: string };
 type ReportDefinition = {

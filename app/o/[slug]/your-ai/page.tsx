@@ -6,6 +6,8 @@ import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
 import { AppPageHeader, AppShell } from "@/components/app/AppShell";
 import OrgAiCopilot from "@/components/ai/OrgAiCopilot";
+import LockedFeatureCard from "@/components/billing/LockedFeatureCard";
+import { useEntitlement } from "@/lib/billing/useEntitlements";
 
 function getErrorMessage(err: unknown, fallback: string) {
   if (err instanceof Error) return err.message;
@@ -17,6 +19,7 @@ export default function YourAiPage() {
   const params = useParams<{ slug: string }>();
   const router = useRouter();
   const orgSlug = String(params?.slug ?? "").trim();
+  const { hasFeature } = useEntitlement(orgSlug);
 
   const [loading, setLoading] = useState(true);
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
@@ -92,6 +95,16 @@ export default function YourAiPage() {
       {msg ? (
         <div className="mb-6 rounded-[22px] border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-700 dark:text-red-100">
           {msg}
+        </div>
+      ) : null}
+
+      {!hasFeature("your_ai_advanced") ? (
+        <div className="mb-6">
+          <LockedFeatureCard
+            feature="your_ai_advanced"
+            title="Advanced AI is locked on your current plan"
+            description="Basic AI access remains available below. Upgrade to unlock deeper diagnosis, advanced recommendations, and richer cross-functional analysis."
+          />
         </div>
       ) : null}
 
