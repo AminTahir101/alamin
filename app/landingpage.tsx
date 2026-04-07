@@ -1,12 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-
-
-<div style={{ position: "fixed", top: 10, left: 10, zIndex: 9999, background: "red", color: "white", padding: "8px 12px", borderRadius: 8 }}>
-  LANDINGPAGE LIVE
-</div>
 
 type Feature = {
   title: string;
@@ -19,6 +13,7 @@ type PriceTier = {
   subtitle: string;
   bullets: string[];
   cta: string;
+  href: string;
   highlight?: boolean;
   badge?: string;
 };
@@ -54,20 +49,23 @@ const tiers: PriceTier[] = [
   {
     title: "Core",
     price: "35 SAR / seat / month",
-    subtitle: "For teams getting started with structured execution.",
+    subtitle:
+      "For companies that need a structured execution system without manual KPI and OKR overhead.",
     bullets: [
       "KPI, Objectives, and OKRs",
-      "Basic AI generation",
+      "AI-assisted generation",
       "Department ownership",
       "Execution tracking",
       "Standard dashboards",
     ],
-    cta: "Get started",
+    cta: "Request demo",
+    href: "/demo",
   },
   {
     title: "Growth",
     price: "50 SAR / seat / month",
-    subtitle: "For companies that need full execution visibility and control.",
+    subtitle:
+      "For organizations that need deeper execution intelligence, visibility, and control.",
     bullets: [
       "Everything in Core",
       "Advanced AI recommendations and evaluations",
@@ -76,14 +74,16 @@ const tiers: PriceTier[] = [
       "Approvals and workflows",
       "Priority support",
     ],
-    cta: "Choose Growth",
+    cta: "Request demo",
+    href: "/demo",
     highlight: true,
     badge: "Most popular",
   },
   {
     title: "Enterprise",
-    price: "Contact Sales",
-    subtitle: "For large organizations with custom requirements.",
+    price: "Custom pricing",
+    subtitle:
+      "For large organizations with rollout, governance, integration, and deployment requirements.",
     bullets: [
       "Unlimited scale",
       "Custom onboarding and rollout",
@@ -91,65 +91,10 @@ const tiers: PriceTier[] = [
       "Dedicated support and SLA",
       "Custom integrations and deployment",
     ],
-    cta: "Contact sales",
+    cta: "Talk to sales",
+    href: "/demo",
   },
 ];
-
-function ThemeToggle() {
-  const [mounted, setMounted] = useState(false);
-  const [theme, setTheme] = useState<"night" | "daylight">("night");
-
-  useEffect(() => {
-    const timeout = window.setTimeout(() => {
-      const stored = window.localStorage.getItem("alamin-theme");
-      setTheme(stored === "daylight" ? "daylight" : "night");
-      setMounted(true);
-    }, 0);
-
-    return () => window.clearTimeout(timeout);
-  }, []);
-
-  useEffect(() => {
-    if (!mounted) return;
-
-    const root = document.documentElement;
-    root.setAttribute("data-theme", theme);
-    root.classList.toggle("dark", theme === "night");
-    window.localStorage.setItem("alamin-theme", theme);
-  }, [theme, mounted]);
-
-  if (!mounted) {
-    return (
-      <div className="alamin-theme-toggle">
-        <button type="button" data-active={false}>
-          Daylight
-        </button>
-        <button type="button" data-active={true}>
-          Night
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="alamin-theme-toggle">
-      <button
-        type="button"
-        data-active={theme === "daylight"}
-        onClick={() => setTheme("daylight")}
-      >
-        Daylight
-      </button>
-      <button
-        type="button"
-        data-active={theme === "night"}
-        onClick={() => setTheme("night")}
-      >
-        Night
-      </button>
-    </div>
-  );
-}
 
 export default function LandingPage() {
   return (
@@ -185,9 +130,6 @@ export default function LandingPage() {
           </nav>
 
           <div className="flex items-center gap-3">
-            <div className="hidden md:block">
-              <ThemeToggle />
-            </div>
             <Link
               href="/auth"
               className="inline-flex h-11 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-5 text-sm font-medium text-[var(--foreground-soft)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
@@ -195,21 +137,21 @@ export default function LandingPage() {
               Log in
             </Link>
             <Link
-              href="/auth"
+              href="/demo"
               className="inline-flex h-11 items-center justify-center rounded-full bg-[var(--foreground)] px-5 text-sm font-semibold text-[var(--background)] transition hover:opacity-92"
             >
-              Get started
+              Request demo
             </Link>
           </div>
         </div>
       </header>
 
       <main>
-        <section className="mx-auto grid max-w-7xl gap-12 px-6 pt-20 pb-16 lg:grid-cols-[minmax(0,1.08fr)_minmax(420px,0.92fr)] lg:px-8 lg:pt-24 lg:pb-20">
+        <section className="mx-auto grid max-w-7xl gap-12 px-6 pb-16 pt-20 lg:grid-cols-[minmax(0,1.08fr)_minmax(420px,0.92fr)] lg:px-8 lg:pb-20 lg:pt-24">
           <div className="max-w-3xl">
             <div className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-xs font-medium text-[var(--foreground-muted)]">
               <span className="h-2 w-2 rounded-full bg-[var(--accent-2)]" />
-              Built for teams that need execution clarity, not more admin work
+              Built for serious teams that need execution clarity, not admin overhead
             </div>
 
             <h1 className="mt-6 text-5xl font-semibold leading-[1.02] tracking-tight text-[var(--foreground)] md:text-6xl">
@@ -227,10 +169,10 @@ export default function LandingPage() {
 
             <div className="mt-9 flex flex-col gap-4 sm:flex-row">
               <Link
-                href="/auth"
+                href="/demo"
                 className="inline-flex h-[52px] items-center justify-center rounded-full bg-[var(--foreground)] px-7 text-sm font-semibold text-[var(--background)] transition hover:opacity-92"
               >
-                Get started
+                Request a demo
               </Link>
               <a
                 href="#pricing"
@@ -292,7 +234,8 @@ export default function LandingPage() {
                           Next actions
                         </div>
                         <div className="mt-2 text-sm text-[var(--foreground-muted)]">
-                          Generate tasks, assign owners, and publish the action plan to the Sales department.
+                          Generate tasks, assign owners, and publish the action plan to the Sales
+                          department.
                         </div>
                       </div>
                       <div className="inline-flex h-10 items-center justify-center rounded-full bg-[var(--foreground)] px-4 text-sm font-semibold text-[var(--background)]">
@@ -332,8 +275,8 @@ export default function LandingPage() {
               Built to connect strategy, execution, and evaluation.
             </h2>
             <p className="mt-4 text-base leading-7 text-[var(--foreground-muted)]">
-              ALAMIN is not another reporting dashboard. It is the layer that connects KPI signals,
-              strategic goals, work ownership, and AI recommendations in one product.
+              ALAMIN is not another reporting dashboard. It is the layer that connects KPI
+              signals, strategic goals, work ownership, and AI recommendations in one product.
             </p>
           </div>
 
@@ -355,9 +298,9 @@ export default function LandingPage() {
                   Built for serious B2B use.
                 </h2>
                 <p className="mt-4 max-w-2xl text-base leading-7 text-[var(--foreground-muted)]">
-                  Tenant isolation, role-ready access control, Supabase RLS compatibility, and a structure
-                  designed for organization-safe data access. Keep service role keys on the server where
-                  they belong. Not in the browser. Not in client code.
+                  Tenant isolation, role-ready access control, Supabase RLS compatibility, and a
+                  structure designed for organization-safe data access. Keep service role keys on
+                  the server where they belong. Not in the browser. Not in client code.
                 </p>
               </div>
 
@@ -379,17 +322,17 @@ export default function LandingPage() {
           </div>
         </section>
 
-        <section id="pricing" className="mx-auto max-w-7xl px-6 pt-[72px] pb-[88px] lg:px-8">
+        <section id="pricing" className="mx-auto max-w-7xl px-6 pb-[88px] pt-[72px] lg:px-8">
           <div className="max-w-3xl">
             <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--foreground-faint)]">
               Pricing
             </div>
             <h2 className="mt-3 text-3xl font-semibold tracking-tight text-[var(--foreground)] md:text-4xl">
-              Straightforward pricing in SAR.
+              Our pricing Plans.
             </h2>
             <p className="mt-4 text-base leading-7 text-[var(--foreground-muted)]">
-              Pricing built for Saudi teams and global scale. Simple per-seat pricing. No hidden tiers.
-              Pay only for active users.
+              Pricing is seat-based.
+              
             </p>
           </div>
 
@@ -400,8 +343,41 @@ export default function LandingPage() {
           </div>
 
           <div className="mt-8 rounded-[22px] border border-[var(--border)] bg-[var(--button-secondary-bg)] p-5 text-sm text-[var(--foreground-muted)]">
-            Annual billing can be offered later. For now, keep it simple: monthly pricing in SAR,
-            per-seat clarity, and enterprise handled through sales.
+            You can request a demo at any time, and our team will make sure to reach out.
+          </div>
+        </section>
+
+        <section className="mx-auto max-w-7xl px-6 pb-10 lg:px-8">
+          <div className="overflow-hidden rounded-[30px] border border-[var(--border-strong)] bg-[var(--background-panel)] p-8 alamin-shadow md:p-10">
+            <div className="grid gap-6 md:grid-cols-[1.1fr_0.9fr] md:items-center">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--foreground-faint)]">
+                  Request a demo
+                </div>
+                <h2 className="mt-3 text-3xl font-semibold tracking-tight text-[var(--foreground)] md:text-4xl">
+                  See how ALAMIN fits your company before rollout.
+                </h2>
+                <p className="mt-4 max-w-2xl text-base leading-7 text-[var(--foreground-muted)]">
+                  Book a demo to walk through your KPI structure, execution model, reporting needs,
+                  and rollout scope. This is the entry point for new customers.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-3 sm:flex-row md:justify-end">
+                <Link
+                  href="app/demo/page.tsx"
+                  className="inline-flex h-12 items-center justify-center rounded-full bg-[var(--foreground)] px-6 text-sm font-semibold text-[var(--background)] transition hover:opacity-92"
+                >
+                  Request demo
+                </Link>
+                <Link
+                  href="/auth"
+                  className="inline-flex h-12 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-6 text-sm font-semibold text-[var(--foreground)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
+                >
+                  Existing customer login
+                </Link>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -412,9 +388,9 @@ export default function LandingPage() {
               <Link href="/auth" className="transition hover:text-[var(--foreground)]">
                 Login
               </Link>
-              <a href="#features" className="transition hover:text-[var(--foreground)]">
-                Features
-              </a>
+              <Link href="/demo" className="transition hover:text-[var(--foreground)]">
+                Request demo
+              </Link>
               <a href="#pricing" className="transition hover:text-[var(--foreground)]">
                 Pricing
               </a>
@@ -429,7 +405,9 @@ export default function LandingPage() {
 function MetricChip({ value, label }: { value: string; label: string }) {
   return (
     <div className="rounded-[22px] border border-[var(--border)] bg-[var(--card)] px-5 py-4 alamin-shadow">
-      <div className="text-2xl font-semibold tracking-tight text-[var(--foreground)]">{value}</div>
+      <div className="text-2xl font-semibold tracking-tight text-[var(--foreground)]">
+        {value}
+      </div>
       <div className="mt-1 text-sm text-[var(--foreground-muted)]">{label}</div>
     </div>
   );
@@ -468,7 +446,13 @@ function FeatureCard({ title, desc }: Feature) {
   return (
     <div className="rounded-[24px] border border-[var(--border)] bg-[var(--card)] p-6 alamin-card-hover">
       <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)]">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="text-[var(--foreground-soft)]">
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          className="text-[var(--foreground-soft)]"
+        >
           <path
             d="M12 3L19 7V17L12 21L5 17V7L12 3Z"
             stroke="currentColor"
@@ -504,11 +488,10 @@ function PriceCard({
   subtitle,
   bullets,
   cta,
+  href,
   highlight,
   badge,
 }: PriceTier) {
-  const href = title === "Enterprise" ? "/contact" : "/auth";
-
   return (
     <div
       className={[
@@ -519,7 +502,7 @@ function PriceCard({
       ].join(" ")}
     >
       {badge ? (
-        <div className="absolute top-4 right-4 rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--foreground-soft)]">
+        <div className="absolute right-4 top-4 rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--foreground-soft)]">
           {badge}
         </div>
       ) : null}
@@ -530,7 +513,7 @@ function PriceCard({
       <div className="mt-4 text-3xl font-semibold tracking-tight text-[var(--foreground)]">
         {price}
       </div>
-      <div className="mt-3 min-h-[52px] text-sm leading-6 text-[var(--foreground-muted)]">
+      <div className="mt-3 min-h-[72px] text-sm leading-6 text-[var(--foreground-muted)]">
         {subtitle}
       </div>
 
