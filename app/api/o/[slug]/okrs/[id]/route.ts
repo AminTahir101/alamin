@@ -78,6 +78,11 @@ type ObjectiveRow = {
   department_id: string | null;
 };
 
+type DepartmentRow = {
+  id: string;
+  name: string;
+};
+
 function canManage(role: string) {
   return ["owner", "admin", "manager", "dept_head", "finance"].includes(role);
 }
@@ -92,17 +97,23 @@ function getErrorMessage(error: unknown, fallback: string) {
   return fallback;
 }
 
+function clampProgress(value: unknown) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return 0;
+  return Math.max(0, Math.min(100, Math.round(num)));
+}
+
 function computeProgress(currentValue: number | null, targetValue: number | null) {
   const current = typeof currentValue === "number" ? currentValue : Number(currentValue);
   const target = typeof targetValue === "number" ? targetValue : Number(targetValue);
 
   if (!Number.isFinite(current) || !Number.isFinite(target) || target === 0) return 0;
-  return Math.max(0, Math.min(100, (current / target) * 100));
+  return Math.max(0, Math.min(100, Math.round((current / target) * 100)));
 }
 
 async function getAssignableMembers(
   admin: ReturnType<typeof supabaseAdmin>,
-  orgId: string,
+  orgId: string
 ) {
   const { data, error } = await admin
     .from("organization_members")
@@ -123,12 +134,43 @@ async function getAssignableMembers(
         role: row.role,
         departmentId: row.department_id,
       };
-    }),
+    })
   );
 
   return members.sort((a, b) =>
-    String(a.email ?? a.userId).localeCompare(String(b.email ?? b.userId)),
+    String(a.email ?? a.userId).localeCompare(String(b.email ?? b.userId))
   );
+}
+
+async function getDepartments(
+  admin: ReturnType<typeof supabaseAdmin>,
+  orgId: string
+) {
+  const { data, error } = await admin
+    .from("departments")
+    .select("id,name")
+    .eq("org_id", orgId)
+    .eq("is_active", true)
+    .order("name", { ascending: true });
+
+  if (error) throw new Error(error.message);
+  return (data ?? []) as DepartmentRow[];
+}
+
+async function getObjectives(
+  admin: ReturnType<typeof supabaseAdmin>,
+  orgId: string,
+  cycleId: string
+) {
+  const { data, error } = await admin
+    .from("objectives")
+    .select("id,title,department_id")
+    .eq("org_id", orgId)
+    .eq("cycle_id", cycleId)
+    .order("created_at", { ascending: false });
+
+  if (error) throw new Error(error.message);
+  return (data ?? []) as ObjectiveRow[];
 }
 
 export async function GET(req: NextRequest, ctx: Ctx) {
@@ -152,44 +194,60 @@ export async function GET(req: NextRequest, ctx: Ctx) {
     }
 
     if (scope.mode === "employee" && okr.owner_user_id !== scope.userId) {
-      const { data: ownedKrs } = await admin
+      const { data: ownedKrs, error: ownedKrErr } = await admin
         .from("key_results")
         .select("id")
         .eq("okr_id", okr.id)
         .eq("owner_user_id", scope.userId)
         .limit(1);
 
+      if (ownedKrErr) throw new Error(ownedKrErr.message);
       if (!ownedKrs?.length) {
         return json({ ok: false, error: "Not allowed" }, 403);
       }
     }
 
-    const [{ data: keyResults, error: krErr }, { data: kpis, error: kpiErr }, { data: objective, error: objErr }] =
-      await Promise.all([
-        admin
-          .from("key_results")
-          .select("*")
-          .eq("okr_id", id)
-          .order("position", { ascending: true })
-          .order("created_at", { ascending: true }),
-        admin
-          .from("kpis")
-          .select("id,title,current_value,target_value,unit")
-          .eq("org_id", scope.org.id),
-        admin
-          .from("objectives")
-          .select("id,title,department_id")
-          .eq("id", okr.objective_id)
-          .maybeSingle<ObjectiveRow>(),
-      ]);
+    const [
+      { data: keyResults, error: krErr },
+      { data: kpis, error: kpiErr },
+      { data: objective, error: objErr },
+      departments,
+      objectives,
+      assignableMembers,
+      cycleRes,
+    ] = await Promise.all([
+      admin
+        .from("key_results")
+        .select("*")
+        .eq("okr_id", id)
+        .order("position", { ascending: true })
+        .order("created_at", { ascending: true }),
+      admin
+        .from("kpis")
+        .select("id,title,current_value,target_value,unit")
+        .eq("org_id", scope.org.id),
+      admin
+        .from("objectives")
+        .select("id,title,department_id")
+        .eq("id", okr.objective_id)
+        .maybeSingle<ObjectiveRow>(),
+      getDepartments(admin, scope.org.id),
+      getObjectives(admin, scope.org.id, okr.cycle_id),
+      canManage(scope.role) ? getAssignableMembers(admin, scope.org.id) : Promise.resolve([]),
+      admin
+        .from("quarterly_cycles")
+        .select("id,year,quarter,status")
+        .eq("id", okr.cycle_id)
+        .maybeSingle<{ id: string; year: number; quarter: number; status: string }>(),
+    ]);
 
     if (krErr) throw new Error(krErr.message);
     if (kpiErr) throw new Error(kpiErr.message);
     if (objErr) throw new Error(objErr.message);
+    if (cycleRes.error) throw new Error(cycleRes.error.message);
 
-    const assignableMembers = canManage(scope.role)
-      ? await getAssignableMembers(admin, scope.org.id)
-      : [];
+    const departmentMap = new Map(departments.map((d) => [d.id, d.name]));
+    const memberMap = new Map(assignableMembers.map((m) => [m.userId, m.email]));
 
     const kpiMap = new Map<string, KpiRow>((kpis ?? []).map((k) => [k.id, k as KpiRow]));
 
@@ -198,28 +256,46 @@ export async function GET(req: NextRequest, ctx: Ctx) {
       return {
         ...kr,
         progress,
+        owner_email: kr.owner_user_id ? memberMap.get(kr.owner_user_id) ?? null : null,
         linked_kpi: kr.kpi_id ? kpiMap.get(kr.kpi_id) ?? null : null,
         is_assigned_to_me: kr.owner_user_id === scope.userId,
       };
     });
 
-    const okrProgress =
+    const averageKrProgress =
       enrichedKeyResults.length > 0
         ? Math.round(
-            enrichedKeyResults.reduce((sum, kr) => sum + (typeof kr.progress === "number" ? kr.progress : 0), 0) /
-              enrichedKeyResults.length,
+            enrichedKeyResults.reduce(
+              (sum, kr) => sum + (typeof kr.progress === "number" ? kr.progress : 0),
+              0
+            ) / enrichedKeyResults.length
           )
         : 0;
 
+    const linkedKpisCount = new Set(
+      enrichedKeyResults.map((kr) => kr.kpi_id).filter(Boolean)
+    ).size;
+
     return json({
       ok: true,
+      cycle: cycleRes.data ?? null,
       okr: {
         ...okr,
-        progress: okrProgress,
-        objective,
+        progress:
+          typeof okr.progress === "number" && Number.isFinite(okr.progress)
+            ? clampProgress(okr.progress)
+            : averageKrProgress,
+        objective_title: objective?.title ?? null,
+        department_name: okr.department_id ? departmentMap.get(okr.department_id) ?? null : null,
+        owner_email: okr.owner_user_id ? memberMap.get(okr.owner_user_id) ?? null : null,
+        key_results_count: enrichedKeyResults.length,
+        linked_kpis_count: linkedKpisCount,
+        average_kr_progress: averageKrProgress,
+        is_assigned_to_me: okr.owner_user_id === scope.userId,
       },
       keyResults: enrichedKeyResults,
-      availableKpis: kpis ?? [],
+      departments,
+      objectives,
       assignableMembers,
       canManage: canManage(scope.role),
       visibility: scope.mode,
@@ -296,7 +372,7 @@ export async function POST(req: NextRequest, ctx: Ctx) {
       owner_user_id: body.owner_user_id ? String(body.owner_user_id).trim() : null,
       kpi_id: body.kpi_id ? String(body.kpi_id).trim() : null,
       position: Number(body.position ?? 0),
-      created_by: scope.user.id,
+      created_by: scope.userId,
       source: "manual",
     });
 
@@ -310,7 +386,7 @@ export async function POST(req: NextRequest, ctx: Ctx) {
 
 export async function PATCH(req: NextRequest, ctx: Ctx) {
   try {
-    const { slug } = await ctx.params;
+    const { slug, id } = await ctx.params;
     const admin = supabaseAdmin();
     const scope = await requireAccessScope(req, slug);
 
@@ -318,97 +394,135 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
       return json({ ok: false, error: "No permission" }, 403);
     }
 
-    const body = (await req.json()) as
-      | {
-          type: "okr";
-          id: string;
-          title?: string;
-          description?: string | null;
-          status?:
-            | "draft"
-            | "pending_approval"
-            | "active"
-            | "on_track"
-            | "at_risk"
-            | "off_track"
-            | "completed"
-            | "cancelled";
-          owner_user_id?: string | null;
-        }
-      | {
-          type: "kr";
-          id: string;
-          title?: string;
-          metric_name?: string | null;
-          metric_type?: string | null;
-          unit?: string | null;
-          start_value?: number | null;
-          current_value?: number | null;
-          target_value?: number | null;
-          kpi_id?: string | null;
-          owner_user_id?: string | null;
-          position?: number | null;
-          status?:
-            | "not_started"
-            | "in_progress"
-            | "on_track"
-            | "at_risk"
-            | "off_track"
-            | "completed"
-            | "cancelled";
-        };
+    const rawBody = (await req.json()) as Record<string, unknown>;
 
-    if (body.type === "okr") {
+    const bodyType = String(rawBody.type ?? "").trim();
+    const targetId =
+      typeof rawBody.id === "string" && rawBody.id.trim()
+        ? rawBody.id.trim()
+        : id;
+
+    if (bodyType === "kr") {
       const updatePayload: Record<string, unknown> = {
         updated_at: new Date().toISOString(),
       };
 
-      if (typeof body.title === "string") updatePayload.title = body.title.trim();
-      if ("description" in body) {
-        updatePayload.description =
-          typeof body.description === "string" && body.description.trim() ? body.description.trim() : null;
-      }
-      if ("status" in body && body.status) updatePayload.status = body.status;
-      if ("owner_user_id" in body) {
-        updatePayload.owner_user_id = body.owner_user_id ? String(body.owner_user_id).trim() : null;
+      if (typeof rawBody.title === "string") updatePayload.title = rawBody.title.trim();
+
+      if ("metric_name" in rawBody) {
+        updatePayload.metric_name =
+          typeof rawBody.metric_name === "string" && rawBody.metric_name.trim()
+            ? rawBody.metric_name.trim()
+            : null;
       }
 
-      const { error } = await admin.from("okrs").update(updatePayload).eq("id", body.id).eq("org_id", scope.org.id);
+      if ("metric_type" in rawBody) {
+        updatePayload.metric_type =
+          typeof rawBody.metric_type === "string" && rawBody.metric_type.trim()
+            ? rawBody.metric_type.trim()
+            : "number";
+      }
+
+      if ("unit" in rawBody) {
+        updatePayload.unit =
+          typeof rawBody.unit === "string" && rawBody.unit.trim() ? rawBody.unit.trim() : null;
+      }
+
+      if ("start_value" in rawBody) updatePayload.start_value = Number(rawBody.start_value ?? 0);
+      if ("current_value" in rawBody) updatePayload.current_value = Number(rawBody.current_value ?? 0);
+      if ("target_value" in rawBody) updatePayload.target_value = Number(rawBody.target_value ?? 0);
+      if ("kpi_id" in rawBody) updatePayload.kpi_id = rawBody.kpi_id ? String(rawBody.kpi_id).trim() : null;
+      if ("owner_user_id" in rawBody) {
+        updatePayload.owner_user_id = rawBody.owner_user_id ? String(rawBody.owner_user_id).trim() : null;
+      }
+      if ("position" in rawBody) updatePayload.position = Number(rawBody.position ?? 0);
+      if ("status" in rawBody && rawBody.status) updatePayload.status = String(rawBody.status);
+
+      const { error } = await admin
+        .from("key_results")
+        .update(updatePayload)
+        .eq("id", targetId)
+        .eq("org_id", scope.org.id);
 
       if (error) throw new Error(error.message);
+
       return json({ ok: true });
     }
+
+    const { data: existingOkr, error: existingErr } = await admin
+      .from("okrs")
+      .select("id,org_id,cycle_id,department_id,objective_id")
+      .eq("id", id)
+      .eq("org_id", scope.org.id)
+      .maybeSingle<{
+        id: string;
+        org_id: string;
+        cycle_id: string;
+        department_id: string | null;
+        objective_id: string;
+      }>();
+
+    if (existingErr) throw new Error(existingErr.message);
+    if (!existingOkr) throw new Error("OKR not found");
 
     const updatePayload: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
     };
 
-    if (typeof body.title === "string") updatePayload.title = body.title.trim();
-    if ("metric_name" in body) {
-      updatePayload.metric_name =
-        typeof body.metric_name === "string" && body.metric_name.trim() ? body.metric_name.trim() : null;
+    if (typeof rawBody.title === "string") {
+      const cleanTitle = rawBody.title.trim();
+      if (!cleanTitle) throw new Error("title is required");
+      updatePayload.title = cleanTitle;
     }
-    if ("metric_type" in body) {
-      updatePayload.metric_type =
-        typeof body.metric_type === "string" && body.metric_type.trim() ? body.metric_type.trim() : "number";
+
+    if ("description" in rawBody) {
+      updatePayload.description =
+        typeof rawBody.description === "string" && rawBody.description.trim()
+          ? rawBody.description.trim()
+          : null;
     }
-    if ("unit" in body) {
-      updatePayload.unit = typeof body.unit === "string" && body.unit.trim() ? body.unit.trim() : null;
+
+    if ("status" in rawBody && rawBody.status) {
+      updatePayload.status = String(rawBody.status);
     }
-    if ("start_value" in body) updatePayload.start_value = Number(body.start_value ?? 0);
-    if ("current_value" in body) updatePayload.current_value = Number(body.current_value ?? 0);
-    if ("target_value" in body) updatePayload.target_value = Number(body.target_value ?? 0);
-    if ("kpi_id" in body) updatePayload.kpi_id = body.kpi_id ? String(body.kpi_id).trim() : null;
-    if ("owner_user_id" in body) {
-      updatePayload.owner_user_id = body.owner_user_id ? String(body.owner_user_id).trim() : null;
+
+    if ("owner_user_id" in rawBody) {
+      updatePayload.owner_user_id = rawBody.owner_user_id
+        ? String(rawBody.owner_user_id).trim()
+        : null;
     }
-    if ("position" in body) updatePayload.position = Number(body.position ?? 0);
-    if ("status" in body && body.status) updatePayload.status = body.status;
+
+    if ("progress" in rawBody) {
+      updatePayload.progress = clampProgress(rawBody.progress);
+    }
+
+    if ("objective_id" in rawBody) {
+      const nextObjectiveId =
+        typeof rawBody.objective_id === "string" && rawBody.objective_id.trim()
+          ? rawBody.objective_id.trim()
+          : "";
+
+      if (!nextObjectiveId) throw new Error("objective_id is required");
+
+      const { data: objective, error: objectiveErr } = await admin
+        .from("objectives")
+        .select("id,department_id")
+        .eq("id", nextObjectiveId)
+        .eq("org_id", scope.org.id)
+        .eq("cycle_id", existingOkr.cycle_id)
+        .maybeSingle<{ id: string; department_id: string | null }>();
+
+      if (objectiveErr) throw new Error(objectiveErr.message);
+      if (!objective) throw new Error("Objective not found for this cycle");
+
+      updatePayload.objective_id = objective.id;
+      updatePayload.department_id = objective.department_id ?? null;
+    }
 
     const { error } = await admin
-      .from("key_results")
+      .from("okrs")
       .update(updatePayload)
-      .eq("id", body.id)
+      .eq("id", id)
       .eq("org_id", scope.org.id);
 
     if (error) throw new Error(error.message);
@@ -430,13 +544,13 @@ export async function DELETE(req: NextRequest, ctx: Ctx) {
     }
 
     const body = (await req.json()) as { id?: string };
-    const id = String(body.id ?? "").trim();
-    if (!id) throw new Error("id is required");
+    const targetId = String(body.id ?? "").trim();
+    if (!targetId) throw new Error("id is required");
 
     const { error } = await admin
       .from("key_results")
       .delete()
-      .eq("id", id)
+      .eq("id", targetId)
       .eq("org_id", scope.org.id);
 
     if (error) throw new Error(error.message);

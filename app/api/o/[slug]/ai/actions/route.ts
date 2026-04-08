@@ -482,38 +482,82 @@ ${referenceData}
   return JSON.parse(content) as Record<string, unknown>;
 }
 
+function normalizeLookup(value: unknown) {
+  return safeString(value).trim().toLowerCase();
+}
+
+function resolveByIdOrLabel(
+  candidates: Array<{ id: string; label: string }>,
+  raw: unknown
+) {
+  const needle = normalizeLookup(raw);
+  if (!needle) return null;
+
+  const direct = candidates.find((item) => item.id === needle);
+  if (direct) return direct.id;
+
+  const exact = candidates.find((item) => normalizeLookup(item.label) === needle);
+  if (exact) return exact.id;
+
+  const contains = candidates.find((item) => normalizeLookup(item.label).includes(needle));
+  if (contains) return contains.id;
+
+  return null;
+}
+
 function getSafeDepartmentId(context: AiWorkspaceContext, raw: unknown) {
   const requested = safeString(raw) || null;
+
   if (context.scope.mode !== "org") {
     return context.scope.departmentId;
   }
+
   if (!requested) return null;
-  return context.deptMap.has(requested) ? requested : null;
+
+  const resolved = resolveByIdOrLabel(
+    context.departments.map((row) => ({ id: row.id, label: row.name })),
+    requested
+  );
+
+  return resolved ?? null;
 }
 
 function getSafeObjectiveId(context: AiWorkspaceContext, raw: unknown) {
-  const id = safeString(raw);
-  return id && context.objectiveMap.has(id) ? id : null;
+  return resolveByIdOrLabel(
+    context.objectives.map((row) => ({ id: row.id, label: row.title })),
+    raw
+  );
 }
 
 function getSafeOkrId(context: AiWorkspaceContext, raw: unknown) {
-  const id = safeString(raw);
-  return id && context.okrMap.has(id) ? id : null;
+  return resolveByIdOrLabel(
+    context.okrs.map((row) => ({ id: row.id, label: row.title })),
+    raw
+  );
 }
 
 function getSafeKrId(context: AiWorkspaceContext, raw: unknown) {
-  const id = safeString(raw);
-  return id && context.krMap.has(id) ? id : null;
+  return resolveByIdOrLabel(
+    context.keyResults.map((row) => ({ id: row.id, label: row.title })),
+    raw
+  );
 }
 
 function getSafeKpiId(context: AiWorkspaceContext, raw: unknown) {
-  const id = safeString(raw);
-  return id && context.kpiMap.has(id) ? id : null;
+  return resolveByIdOrLabel(
+    context.kpis.map((row) => ({ id: row.id, label: row.title })),
+    raw
+  );
 }
 
 function getSafeMemberId(context: AiWorkspaceContext, raw: unknown) {
-  const id = safeString(raw);
-  return id && context.memberLabelMap.has(id) ? id : null;
+  return resolveByIdOrLabel(
+    context.members.map((row) => ({
+      id: row.userId,
+      label: context.memberLabelMap.get(row.userId) ?? row.userId,
+    })),
+    raw
+  );
 }
 
 function buildPreviewLabels(context: AiWorkspaceContext): PreviewLabels {
@@ -619,7 +663,9 @@ async function handleCreateOkr(
 
   const objectiveId = getSafeObjectiveId(context, okrRoot.objective_id);
   if (!objectiveId) {
-    throw new Error("AI action could not resolve a valid objective_id");
+    throw new Error(
+      `AI action could not resolve a valid objective_id. Received: ${safeString(okrRoot.objective_id) || "empty"}`
+    );
   }
 
   const title = requireString(okrRoot.title, "OKR title");
@@ -799,6 +845,9 @@ async function createClusterAndTasks(
       title: clusterTitle,
       taskCount: insertTasks.length,
       departmentId,
+      objectiveId,
+      okrId,
+      keyResultId,
     },
   };
 }
