@@ -428,8 +428,23 @@ export async function sendReportEmail(args: {
   const apiKey = env("RESEND_API_KEY");
   const from = env("REPORTS_FROM_EMAIL");
 
+  console.log("REPORT EMAIL DEBUG", {
+    hasApiKey: Boolean(apiKey),
+    hasFromEmail: Boolean(from),
+    fromEmailValue: from || null,
+    recipientsCount: args.to.length,
+    nodeEnv: process.env.NODE_ENV,
+    vercelEnv: process.env.VERCEL_ENV || null,
+  });
+
   if (!apiKey || !from || !args.to.length) {
-    return { sent: false, skipped: true, error: !args.to.length ? "No recipients" : "Missing RESEND_API_KEY or REPORTS_FROM_EMAIL" };
+    return {
+      sent: false,
+      skipped: true,
+      error: !args.to.length
+        ? "No recipients"
+        : "Missing RESEND_API_KEY or REPORTS_FROM_EMAIL",
+    };
   }
 
   const res = await fetch("https://api.resend.com/emails", {
@@ -448,12 +463,15 @@ export async function sendReportEmail(args: {
 
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
-    return { sent: false, skipped: false, error: detail || `Email send failed (${res.status})` };
+    return {
+      sent: false,
+      skipped: false,
+      error: detail || `Email send failed (${res.status})`,
+    };
   }
 
   return { sent: true, skipped: false, error: null };
 }
-
 export function reportEmailHtml(args: {
   title: string;
   periodLabel: string;
