@@ -117,11 +117,16 @@ export default function AuthPage() {
   const envHint = useMemo(() => {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
     const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
+    // Supabase supports two key formats:
+    //   - Legacy JWT: starts with "eyJ"
+    //   - New publishable: starts with "sb_publishable_"
+    // Both are valid for browser use.
+    const isJwt = key.startsWith("eyJ");
+    const isPublishable = key.startsWith("sb_publishable_");
     return {
       url,
       key,
-      looksLikeJwt: key.startsWith("eyJ"),
-      looksLikePublishable: key.startsWith("sb_publishable_"),
+      looksValid: isJwt || isPublishable,
     };
   }, []);
 
@@ -174,19 +179,47 @@ export default function AuthPage() {
   );
 
   useEffect(() => {
+    let alive = true;
+
+    // Listen for PASSWORD_RECOVERY event. Supabase fires this when a user
+    // clicks a recovery link and the SDK detects the token in the URL.
+    // We route them to /set-password to set a new password.
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!alive) return;
+      if (event === "PASSWORD_RECOVERY" && session) {
+        router.replace("/set-password");
+      }
+    });
+
     async function boot() {
       try {
+        // Check the current URL hash for a recovery token before anything else.
+        if (typeof window !== "undefined") {
+          const hash = window.location.hash || "";
+          if (hash.includes("type=recovery")) {
+            setTimeout(() => {
+              if (alive) router.replace("/set-password");
+            }, 100);
+            return;
+          }
+        }
+
         const { data } = await supabase.auth.getSession();
         if (data.session) {
           await resolveTenantAndRoute(data.session);
         }
       } finally {
-        setBooting(false);
+        if (alive) setBooting(false);
       }
     }
 
     void boot();
-  }, [resolveTenantAndRoute]);
+
+    return () => {
+      alive = false;
+      sub.subscription.unsubscribe();
+    };
+  }, [resolveTenantAndRoute, router]);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -209,9 +242,9 @@ export default function AuthPage() {
       return;
     }
 
-    if (envHint.looksLikePublishable) {
+    if (!envHint.looksValid) {
       setMsg(
-        "Your NEXT_PUBLIC_SUPABASE_ANON_KEY is wrong. Use the public ANON JWT key that starts with eyJ, then restart the dev server."
+        "NEXT_PUBLIC_SUPABASE_ANON_KEY does not look valid. It should start with either 'eyJ' (legacy JWT) or 'sb_publishable_' (new format). Restart the dev server after updating .env.local."
       );
       return;
     }
@@ -238,7 +271,7 @@ export default function AuthPage() {
 
       if (m.toLowerCase().includes("failed to fetch")) {
         setMsg(
-          "Failed to reach Supabase.\n\n1) Use the ANON JWT key that starts with eyJ.\n2) Restart dev server after editing .env.local.\n3) Disable privacy extensions on localhost.\n4) Ensure NEXT_PUBLIC_SUPABASE_URL is exactly https://<project>.supabase.co"
+          "Failed to reach Supabase.\n\n1) Verify NEXT_PUBLIC_SUPABASE_URL is exactly https://<project>.supabase.co\n2) Verify NEXT_PUBLIC_SUPABASE_ANON_KEY is set (legacy 'eyJ' JWT or new 'sb_publishable_' key).\n3) Restart dev server after editing .env.local.\n4) Disable privacy extensions on localhost."
         );
       } else {
         setMsg(m);
@@ -463,7 +496,7 @@ export default function AuthPage() {
                   </form>
 
                   {msg ? (
-                    <div className="mt-5 rounded-[20px] border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm leading-6 whitespace-pre-wrap text-red-100">
+                    <div className="mt-5 rounded-[20px] border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm leading-6 whitespace-pre-wrap text-red-700 dark:text-red-100">
                       {msg}
                     </div>
                   ) : null}
