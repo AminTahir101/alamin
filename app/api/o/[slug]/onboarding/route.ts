@@ -2,6 +2,11 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import {
+  inviteOrAddMembers,
+  summarizeOutcomes,
+  type Role as InviteRole,
+} from "@/lib/server/invites";
 
 export const runtime = "nodejs";
 
@@ -239,64 +244,6 @@ async function findUserByEmail(
   }
 
   return null;
-}
-
-async function inviteUsersByEmail(args: {
-  supabaseAdmin: SupabaseClient;
-  emails: string[];
-  redirectTo: string;
-  companyName: string;
-  orgSlug: string;
-  invitedByUserId: string;
-}) {
-  const emails = Array.from(
-    new Set(args.emails.map((e) => cleanEmail(e)).filter(Boolean))
-  );
-
-  const invited: string[] = [];
-  const skipped_existing: string[] = [];
-  const failed: Array<{ email: string; error: string }> = [];
-
-  for (const email of emails) {
-    try {
-      const existing = await findUserByEmail(args.supabaseAdmin, email);
-
-      if (existing) {
-        skipped_existing.push(email);
-        continue;
-      }
-
-      const result = await args.supabaseAdmin.auth.admin.inviteUserByEmail(email, {
-        redirectTo: args.redirectTo,
-        data: {
-          org_slug: args.orgSlug,
-          company_name: args.companyName,
-          invited_by: args.invitedByUserId,
-        },
-      });
-
-      if (result.error) {
-        failed.push({
-          email,
-          error: result.error.message,
-        });
-        continue;
-      }
-
-      invited.push(email);
-    } catch (error: unknown) {
-      failed.push({
-        email,
-        error: error instanceof Error ? error.message : "Unknown invite error",
-      });
-    }
-  }
-
-  return {
-    invited,
-    skipped_existing,
-    failed,
-  };
 }
 
 export async function POST(
@@ -610,25 +557,6 @@ export async function POST(
     let cycleId = existingCycle?.id ?? "";
 
     if (!existingCycle) {
-      // Close any currently-active cycle for this org to satisfy the
-      // uq_quarterly_cycles_one_active_per_org constraint.
-      const { error: closeActiveErr } = await supabaseAdmin
-        .from("quarterly_cycles")
-        .update({ status: "closed", updated_at: new Date().toISOString() })
-        .eq("org_id", orgId)
-        .eq("status", "active");
-
-      if (closeActiveErr) {
-        return json(
-          {
-            ok: false,
-            error: "Failed to close previous active cycle",
-            detail: closeActiveErr.message,
-          },
-          500
-        );
-      }
-
       const { data: insertedCycle, error: insertCycleError } = await supabaseAdmin
         .from("quarterly_cycles")
         .insert({
@@ -702,35 +630,6 @@ export async function POST(
     const existingDepartmentMap = new Map(
       (existingDepartments ?? []).map((d) => [d.name.toLowerCase(), d])
     );
-
-    // Delete any existing departments that are NOT in the submitted list.
-    // This cascades and removes all child KPIs/OKRs/JTBDs/tasks tied to them.
-    const submittedDeptNamesLower = new Set(
-      departmentNames.map((name) => name.toLowerCase())
-    );
-
-    const orphanDepartmentIds = (existingDepartments ?? [])
-      .filter((d) => !submittedDeptNamesLower.has(d.name.toLowerCase()))
-      .map((d) => d.id);
-
-    if (orphanDepartmentIds.length > 0) {
-      const { error: deleteOrphanDeptError } = await supabaseAdmin
-        .from("departments")
-        .delete()
-        .in("id", orphanDepartmentIds)
-        .eq("org_id", orgId);
-
-      if (deleteOrphanDeptError) {
-        return json(
-          {
-            ok: false,
-            error: "Failed to remove orphan departments",
-            detail: deleteOrphanDeptError.message,
-          },
-          500
-        );
-      }
-    }
 
     const missingDepartments = departmentNames.filter(
       (name) => !existingDepartmentMap.has(name.toLowerCase())
@@ -1040,27 +939,45 @@ export async function POST(
     }
 
     const appBaseUrl = getAppBaseUrl(req);
-    const inviteRedirectTo = `${appBaseUrl}/auth`;
+    const inviteRedirectTo = `${appBaseUrl}/accept-invite`;
 
-    const inviteTargets = Array.from(
-      new Set(
-        [
-          personal.email,
-          ...aiSetup.departmentHeads.map((h) => cleanEmail(h.headEmail)),
-        ]
-          .map((email) => cleanEmail(email))
-          .filter(Boolean)
-      )
-    );
+    // Build invite requests for department heads only. The owner (person
+    // filling out onboarding) already has their `owner` membership created
+    // earlier in this route and doesn't need an invite email.
+    const inviteRequests: Array<{
+      email: string;
+      role: InviteRole;
+      departmentId: string | null;
+    }> = [];
 
-    const inviteResults = await inviteUsersByEmail({
-      supabaseAdmin,
-      emails: inviteTargets,
-      redirectTo: inviteRedirectTo,
-      companyName,
+    const ownerEmailForSkip = cleanEmail(personal.email);
+
+    for (const head of aiSetup.departmentHeads) {
+      const headEmail = cleanEmail(head.headEmail);
+      if (!headEmail) continue;
+      if (headEmail === ownerEmailForSkip) continue; // don't invite the owner
+
+      const departmentId = departmentMap.get(
+        head.departmentName.toLowerCase(),
+      );
+      if (!departmentId) continue;
+
+      inviteRequests.push({
+        email: headEmail,
+        role: "dept_head",
+        departmentId,
+      });
+    }
+
+    const outcomes = await inviteOrAddMembers(supabaseAdmin, inviteRequests, {
+      orgId,
       orgSlug,
-      invitedByUserId: createdBy,
+      orgName: companyName,
+      invitedBy: createdBy,
+      redirectTo: inviteRedirectTo,
     });
+
+    const inviteSummary = summarizeOutcomes(outcomes);
 
     return json({
       ok: true,
@@ -1084,9 +1001,10 @@ export async function POST(
       },
       invites: {
         redirect_to: inviteRedirectTo,
-        invited: inviteResults.invited,
-        skipped_existing: inviteResults.skipped_existing,
-        failed: inviteResults.failed,
+        invited: inviteSummary.invited,
+        existing_added: inviteSummary.existing_added,
+        existing_member: inviteSummary.existing_member,
+        failed: inviteSummary.failed,
       },
       persisted: {
         personal,
@@ -1097,7 +1015,7 @@ export async function POST(
         },
       },
       note:
-        "Onboarding persists company setup, AI context profiles, and sends Supabase invites to new users only.",
+        "Onboarding persists company setup, AI context profiles, and creates memberships + sends invites for department heads.",
     });
   } catch (err: unknown) {
     return json(

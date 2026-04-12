@@ -113,6 +113,8 @@ export default function AuthPage() {
 
   const [orgs, setOrgs] = useState<Org[]>([]);
   const [showOrgPicker, setShowOrgPicker] = useState(false);
+  const [showNoMembership, setShowNoMembership] = useState(false);
+  const [userEmailSignedIn, setUserEmailSignedIn] = useState<string | null>(null);
 
   const envHint = useMemo(() => {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
@@ -120,7 +122,6 @@ export default function AuthPage() {
     // Supabase supports two key formats:
     //   - Legacy JWT: starts with "eyJ"
     //   - New publishable: starts with "sb_publishable_"
-    // Both are valid for browser use.
     const isJwt = key.startsWith("eyJ");
     const isPublishable = key.startsWith("sb_publishable_");
     return {
@@ -134,6 +135,7 @@ export default function AuthPage() {
     async (session: Session) => {
       setResolvingTenant(true);
       setMsg(null);
+      setShowNoMembership(false);
 
       try {
         const user = session.user;
@@ -141,7 +143,7 @@ export default function AuthPage() {
 
         if (invitedSlug) {
           rememberOrgSlug(invitedSlug);
-          router.replace(`/o/${encodeURIComponent(invitedSlug)}/onboarding`);
+          router.replace(`/o/${encodeURIComponent(invitedSlug)}/dashboard`);
           return;
         }
 
@@ -167,8 +169,10 @@ export default function AuthPage() {
           return;
         }
 
+        // Zero orgs — show the friendly no-membership screen instead of an error
         setShowOrgPicker(false);
-        setMsg("No organization membership was found for this account.");
+        setShowNoMembership(true);
+        setUserEmailSignedIn(user.email ?? null);
       } catch (err: unknown) {
         setMsg(getErrorMessage(err, "Failed to resolve workspace"));
       } finally {
@@ -181,9 +185,7 @@ export default function AuthPage() {
   useEffect(() => {
     let alive = true;
 
-    // Listen for PASSWORD_RECOVERY event. Supabase fires this when a user
-    // clicks a recovery link and the SDK detects the token in the URL.
-    // We route them to /set-password to set a new password.
+    // Listen for auth events (PASSWORD_RECOVERY, SIGNED_IN after invite, etc.)
     const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
       if (!alive) return;
       if (event === "PASSWORD_RECOVERY" && session) {
@@ -193,12 +195,22 @@ export default function AuthPage() {
 
     async function boot() {
       try {
-        // Check the current URL hash for a recovery token before anything else.
+        // Check the current URL hash for recovery or invite tokens.
+        // Supabase puts tokens in the URL fragment like:
+        //   #access_token=...&type=recovery  (password reset)
+        //   #access_token=...&type=invite    (first-time invite)
+        //   #access_token=...&type=signup    (email confirmation)
         if (typeof window !== "undefined") {
           const hash = window.location.hash || "";
           if (hash.includes("type=recovery")) {
             setTimeout(() => {
               if (alive) router.replace("/set-password");
+            }, 100);
+            return;
+          }
+          if (hash.includes("type=invite") || hash.includes("type=signup")) {
+            setTimeout(() => {
+              if (alive) router.replace("/accept-invite");
             }, 100);
             return;
           }
@@ -289,6 +301,7 @@ export default function AuthPage() {
   async function logout() {
     await supabase.auth.signOut();
     setShowOrgPicker(false);
+    setShowNoMembership(false);
     setOrgs([]);
     setMsg(null);
     setEmail("");
@@ -401,7 +414,80 @@ export default function AuthPage() {
           <div className="absolute inset-0 rounded-[32px] bg-[linear-gradient(135deg,rgba(109,94,252,0.18),rgba(55,207,255,0.08))] blur-2xl" />
           <div className="relative overflow-hidden rounded-[32px] border border-[var(--border-strong)] bg-[var(--background-panel)] p-5 alamin-glow md:p-6">
             <div className="rounded-[26px] border border-[var(--border)] bg-[var(--background-elevated)] p-5 md:p-6">
-              {showOrgPicker ? (
+              {showNoMembership ? (
+                <>
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
+                        One more step
+                      </div>
+                      <h2 className="mt-3 text-3xl font-semibold tracking-tight text-[var(--foreground)]">
+                        Your workspace isn&apos;t ready yet
+                      </h2>
+                      <p className="mt-3 max-w-md text-sm leading-7 text-[var(--foreground-muted)]">
+                        {userEmailSignedIn ? (
+                          <>
+                            Signed in as{" "}
+                            <span className="font-semibold text-[var(--foreground)]">
+                              {userEmailSignedIn}
+                            </span>
+                            . This account isn&apos;t attached to any workspace yet.
+                          </>
+                        ) : (
+                          "This account isn't attached to any workspace yet."
+                        )}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-6 grid gap-3">
+                    <button
+                      type="button"
+                      onClick={() => router.push("/create-workspace")}
+                      className="group flex w-full items-center justify-between rounded-[22px] border border-[var(--border)] bg-[var(--card-subtle)] px-5 py-4 text-left transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
+                    >
+                      <div>
+                        <div className="text-base font-semibold text-[var(--foreground)]">
+                          Create a new workspace
+                        </div>
+                        <div className="mt-1 text-sm text-[var(--foreground-muted)]">
+                          Set up a fresh company workspace where you&apos;re the owner.
+                        </div>
+                      </div>
+                      <span className="rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-3 py-1 text-xs font-semibold text-[var(--foreground-soft)] transition group-hover:border-[var(--border-strong)] group-hover:bg-[var(--button-secondary-hover)]">
+                        Start
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void logout()}
+                      className="group flex w-full items-center justify-between rounded-[22px] border border-[var(--border)] bg-[var(--card-subtle)] px-5 py-4 text-left transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
+                    >
+                      <div>
+                        <div className="text-base font-semibold text-[var(--foreground)]">
+                          Sign out
+                        </div>
+                        <div className="mt-1 text-sm text-[var(--foreground-muted)]">
+                          Log in with a different account or wait for a new invite.
+                        </div>
+                      </div>
+                      <span className="rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-3 py-1 text-xs font-semibold text-[var(--foreground-soft)] transition group-hover:border-[var(--border-strong)] group-hover:bg-[var(--button-secondary-hover)]">
+                        Sign out
+                      </span>
+                    </button>
+                  </div>
+
+                  <div className="mt-6 rounded-[22px] border border-[var(--border)] bg-[var(--card-subtle)] p-4">
+                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
+                      Expecting an invite?
+                    </div>
+                    <div className="mt-3 text-sm leading-6 text-[var(--foreground-muted)]">
+                      If your admin recently invited you, check your email — the invite link takes
+                      you directly into your workspace. If you can&apos;t find it, ask them to resend.
+                    </div>
+                  </div>
+                </>
+              ) : showOrgPicker ? (
                 <>
                   <div className="flex items-start justify-between gap-4">
                     <div>
