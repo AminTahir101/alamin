@@ -96,9 +96,6 @@ function panelClass() {
   return "rounded-[24px] border border-[var(--border)] bg-[var(--card)] p-5 alamin-shadow";
 }
 
-function subtlePanelClass() {
-  return "rounded-[22px] border border-[var(--border)] bg-[var(--card-soft)] p-4";
-}
 
 export default function ObjectivesPage() {
   const params = useParams<{ slug: string }>();

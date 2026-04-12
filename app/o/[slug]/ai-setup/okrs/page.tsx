@@ -76,10 +76,18 @@ type EditableObjective = {
 type DeptStatus = "idle" | "generating" | "ready" | "partial" | "applied" | "error";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Style helpers (mirror KPI page)
+// Style helpers — canonical patterns from /okrs, /objectives, /kpis pages
 // ─────────────────────────────────────────────────────────────────────────────
 
-function softCardClass() {
+function itemCardClass() {
+  return "rounded-[24px] border border-[var(--border)] bg-[var(--card)] p-5 alamin-shadow";
+}
+
+function subCardClass() {
+  return "rounded-2xl border border-[var(--border)] bg-[var(--card-soft)] p-4";
+}
+
+function innerCardClass() {
   return "rounded-2xl border border-[var(--border)] bg-[var(--card-subtle)] p-4";
 }
 
@@ -87,12 +95,49 @@ function inputClass() {
   return "w-full rounded-2xl border border-[var(--border)] bg-[var(--background-elevated)] px-4 py-3 text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--foreground-faint)] focus:border-[var(--border-active)] disabled:opacity-60";
 }
 
-function actionPrimaryClass() {
-  return "rounded-2xl border border-[var(--border)] bg-[var(--foreground)] px-5 py-2.5 text-sm font-semibold text-[var(--background)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50";
+function primaryButtonClass() {
+  return "inline-flex h-11 items-center justify-center rounded-full bg-[var(--foreground)] px-5 text-sm font-semibold text-[var(--background)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50";
 }
 
-function actionGhostClass() {
-  return "rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-5 py-2.5 text-sm font-medium text-[var(--foreground)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)] disabled:cursor-not-allowed disabled:opacity-50";
+function secondaryButtonClass() {
+  return "inline-flex h-11 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-5 text-sm font-semibold text-[var(--foreground)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)] disabled:cursor-not-allowed disabled:opacity-50";
+}
+
+function metricCardToneClass(tone: "default" | "success" | "warning" | "danger") {
+  switch (tone) {
+    case "success":
+      return "border-emerald-500/20 bg-emerald-500/10";
+    case "warning":
+      return "border-amber-500/20 bg-amber-500/10";
+    case "danger":
+      return "border-red-500/20 bg-red-500/10";
+    default:
+      return "border-[var(--border)] bg-[var(--card)]";
+  }
+}
+
+function MetricCard({
+  label,
+  value,
+  hint,
+  tone = "default",
+}: {
+  label: string;
+  value: string;
+  hint: string;
+  tone?: "default" | "success" | "warning" | "danger";
+}) {
+  return (
+    <div className={`rounded-[24px] border p-5 alamin-shadow ${metricCardToneClass(tone)}`}>
+      <div className="text-[11px] uppercase tracking-[0.16em] text-[var(--foreground-faint)]">
+        {label}
+      </div>
+      <div className="mt-3 text-3xl font-black tracking-[-0.03em] text-[var(--foreground)]">
+        {value}
+      </div>
+      <div className="mt-2 text-sm text-[var(--foreground-muted)]">{hint}</div>
+    </div>
+  );
 }
 
 function getErrorMessage(err: unknown, fallback: string): string {
@@ -446,62 +491,82 @@ export default function AiSetupOkrsPage() {
   return (
     <AppShell slug={orgSlug} sessionEmail={sessionEmail}>
       <AppPageHeader
-        eyebrow="AI Setup · Step 2"
+        eyebrow={cycle ? `Q${cycle.quarter} ${cycle.year} · AI Setup` : "AI Setup · Step 2"}
         title="Review your AI-generated OKRs"
         description="Your KPIs are set. Now decide what to push on this cycle. ALAMIN has drafted objectives and key results for each department based on your strategy and applied KPIs. Review, edit, and approve."
       />
 
-      <SectionCard
-        title="Active reporting cycle"
-        subtitle="All generated OKRs are tied to this cycle"
-        actions={
-          <CycleManager
-            slug={orgSlug}
-            currentCycle={cycle}
-            onCycleChanged={(c) => {
-              setCycle(c);
-              void loadInitial();
-            }}
-          />
-        }
-        className="mb-6"
-      >
-        <div className="grid gap-4 sm:grid-cols-3">
-          <div className={softCardClass()}>
-            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-faint)]">
-              Current cycle
+      <section className="mb-6 overflow-hidden rounded-[30px] border border-[var(--border)] bg-[var(--background-panel)] p-6 alamin-shadow">
+        <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+          <div>
+            <div className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--foreground-faint)]">
+              <span className="h-2 w-2 rounded-full bg-[var(--accent-2)]" />
+              AI Setup · Step 2 of 2
             </div>
-            <div className="mt-2 text-base font-semibold text-[var(--foreground)]">
-              {cycle ? `Q${cycle.quarter} ${cycle.year}` : "No active cycle"}
+
+            <h2 className="mt-5 text-3xl font-black tracking-[-0.04em] text-[var(--foreground)]">
+              Commit to what moves the needle this cycle.
+            </h2>
+
+            <p className="mt-4 max-w-3xl text-base leading-7 text-[var(--foreground-muted)]">
+              OKRs are the temporary bets you place against your KPIs. Each objective is an aspiration, each key result is a measurable target. ALAMIN drafted 2 objectives per department — 1 ambitious, 1 committed — using your applied KPIs as context.
+            </p>
+
+            <div className="mt-6 flex flex-wrap gap-3">
+              <div className="rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-medium text-[var(--foreground-soft)]">
+                Linked to existing KPIs
+              </div>
+              <div className="rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-medium text-[var(--foreground-soft)]">
+                Editable before apply
+              </div>
+              <CycleManager
+                slug={orgSlug}
+                currentCycle={cycle}
+                onCycleChanged={(c) => {
+                  setCycle(c);
+                  void loadInitial();
+                }}
+              />
             </div>
           </div>
-          <div className={softCardClass()}>
-            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-faint)]">
-              Departments
-            </div>
-            <div className="mt-2 text-base font-semibold text-[var(--foreground)]">
-              {departments.length}
-            </div>
-          </div>
-          <div className={softCardClass()}>
-            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-faint)]">
-              Progress
-            </div>
-            <div className="mt-2 text-base font-semibold text-[var(--foreground)]">
-              {appliedCount} / {departments.length} complete
-            </div>
+
+          <div className="grid gap-3">
+            <MetricCard
+              label="Current cycle"
+              value={cycle ? `Q${cycle.quarter} ${cycle.year}` : "—"}
+              hint={cycle ? "All OKRs tie to this cycle" : "No active cycle"}
+              tone="default"
+            />
+            <MetricCard
+              label="Departments"
+              value={String(departments.length)}
+              hint="Each generates 2 objectives"
+              tone="default"
+            />
+            <MetricCard
+              label="Progress"
+              value={`${appliedCount} / ${departments.length}`}
+              hint="Departments complete"
+              tone={
+                departments.length > 0 && appliedCount === departments.length
+                  ? "success"
+                  : appliedCount > 0
+                    ? "warning"
+                    : "default"
+              }
+            />
           </div>
         </div>
-      </SectionCard>
+      </section>
 
       {errorMsg && (
-        <SectionCard className="mb-6 border-red-400/30 bg-red-400/5">
-          <div className="text-sm text-red-300">{errorMsg}</div>
-        </SectionCard>
+        <div className="mb-6 rounded-[20px] border border-red-500/20 bg-red-500/10 px-5 py-4 text-sm text-red-700 dark:text-red-100">
+          {errorMsg}
+        </div>
       )}
 
       {loading && (
-        <SectionCard>
+        <SectionCard className="bg-[var(--background-panel)]">
           <div className="flex items-center justify-center gap-3 py-10 text-sm text-[var(--foreground-muted)]">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--foreground)]" />
             Loading your OKR setup…
@@ -513,13 +578,14 @@ export default function AiSetupOkrsPage() {
         <SectionCard
           title="No departments found"
           subtitle="You need departments before OKRs can be generated"
+          className="bg-[var(--background-panel)]"
         >
           <button
             type="button"
             onClick={() =>
               router.push(`/o/${encodeURIComponent(orgSlug)}/ai-setup`)
             }
-            className={actionPrimaryClass()}
+            className={primaryButtonClass()}
           >
             Back to KPI setup
           </button>
@@ -544,9 +610,10 @@ export default function AiSetupOkrsPage() {
                       ? "Some objectives applied, review the rest"
                       : "Review objectives, edit, then apply each one"
                 }
+                className="bg-[var(--background-panel)]"
                 actions={
                   status === "applied" ? (
-                    <span className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-300">
+                    <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-100">
                       Applied
                     </span>
                   ) : null
@@ -561,7 +628,7 @@ export default function AiSetupOkrsPage() {
 
                 {status === "error" && (
                   <div className="space-y-3">
-                    <div className="rounded-2xl border border-red-400/30 bg-red-400/10 px-4 py-3 text-sm text-red-300">
+                    <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-5 py-4 text-sm text-red-700 dark:text-red-100">
                       {error || "Generation failed"}
                     </div>
                     <button
@@ -570,7 +637,7 @@ export default function AiSetupOkrsPage() {
                         session &&
                         generateForDepartment(dept.id, session.access_token)
                       }
-                      className={actionGhostClass()}
+                      className={secondaryButtonClass()}
                     >
                       Retry generation
                     </button>
@@ -581,7 +648,7 @@ export default function AiSetupOkrsPage() {
                   drafts.length > 0 && (
                     <div className="space-y-5">
                       {error && (
-                        <div className="rounded-2xl border border-red-400/30 bg-red-400/10 px-4 py-3 text-sm text-red-300">
+                        <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-5 py-4 text-sm text-red-700 dark:text-red-100">
                           {error}
                         </div>
                       )}
@@ -622,7 +689,7 @@ export default function AiSetupOkrsPage() {
       )}
 
       {!loading && departments.length > 0 && (
-        <SectionCard className="mt-6">
+        <SectionCard className="mt-6 bg-[var(--background-panel)]">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="text-sm text-[var(--foreground-muted)]">
               {allDeptsApplied
@@ -637,7 +704,7 @@ export default function AiSetupOkrsPage() {
                 onClick={() =>
                   router.push(`/o/${encodeURIComponent(orgSlug)}/ai-setup`)
                 }
-                className={actionGhostClass()}
+                className={secondaryButtonClass()}
               >
                 Back to KPIs
               </button>
@@ -646,7 +713,7 @@ export default function AiSetupOkrsPage() {
                 onClick={() =>
                   router.push(`/o/${encodeURIComponent(orgSlug)}/dashboard`)
                 }
-                className={actionPrimaryClass()}
+                className={primaryButtonClass()}
               >
                 {allDeptsApplied ? "Continue to dashboard" : "Skip to dashboard"}
               </button>
@@ -691,7 +758,7 @@ function ObjectiveCard({
   onApply,
 }: ObjectiveCardProps) {
   return (
-    <div className={`${softCardClass()} ${isApplied ? "opacity-70" : ""}`}>
+    <div className={`${itemCardClass()} ${isApplied ? "opacity-70" : ""}`}>
       {/* Objective rationale */}
       {editable.rationale && (
         <div className="mb-4 rounded-xl border border-[var(--border)] bg-[var(--background-elevated)] px-3 py-2">
@@ -749,7 +816,7 @@ function ObjectiveCard({
               {okr.key_results.map((kr, krIdx) => (
                 <div
                   key={krIdx}
-                  className={`rounded-xl border border-[var(--border)] bg-[var(--card-subtle)] p-3 transition ${
+                  className={`rounded-xl border border-[var(--border)] bg-[var(--card-soft)] p-3 transition ${
                     kr.include ? "" : "opacity-50"
                   }`}
                 >
@@ -789,11 +856,11 @@ function ObjectiveCard({
                       )}
 
                       {kr.link_to_kpi_title && (
-                        <div className="rounded-lg border border-blue-400/30 bg-blue-500/10 px-3 py-2">
-                          <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-blue-300">
+                        <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-2">
+                          <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--info)]">
                             Linked KPI
                           </div>
-                          <div className="mt-0.5 text-xs text-blue-200">
+                          <div className="mt-0.5 text-xs text-blue-700 dark:text-blue-100">
                             {kr.link_to_kpi_title}
                           </div>
                         </div>
@@ -893,14 +960,14 @@ function ObjectiveCard({
             type="button"
             disabled={isApplying}
             onClick={onApply}
-            className={actionPrimaryClass()}
+            className={primaryButtonClass()}
           >
             {isApplying ? "Applying…" : "Apply this objective"}
           </button>
         </div>
       )}
       {isApplied && (
-        <div className="mt-5 rounded-2xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+        <div className="mt-5 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-5 py-4 text-sm text-emerald-700 dark:text-emerald-100">
           ✓ Objective applied to workspace
         </div>
       )}

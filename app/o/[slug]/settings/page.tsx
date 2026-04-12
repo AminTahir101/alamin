@@ -8,6 +8,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { AppPageHeader, AppShell } from "@/components/app/AppShell";
 import SectionCard from "@/components/ui/SectionCard";
 import StatusBadge from "@/components/ui/StatusBadge";
+import CycleManager, { type CycleSummary } from "@/components/cycles/CycleManager";
 
 type Role =
   | "owner"
@@ -230,6 +231,63 @@ function AppearanceCard() {
           </div>
           <div className="mt-4 text-sm leading-7 text-[var(--foreground-muted)]">
             The theme switch was removed from the sidebar and homepage. Settings is now the only place that controls it.
+          </div>
+        </div>
+      </div>
+    </SectionCard>
+  );
+}
+
+function ReportingCycleCard({
+  slug,
+  activeCycle,
+  onChanged,
+}: {
+  slug: string;
+  activeCycle: { id: string; year: number; quarter: number; status: string } | null;
+  onChanged: () => void;
+}) {
+  const cycleSummary: CycleSummary | null = activeCycle
+    ? {
+        id: activeCycle.id,
+        year: activeCycle.year,
+        quarter: activeCycle.quarter,
+        status: activeCycle.status,
+      }
+    : null;
+
+  return (
+    <SectionCard
+      title="Reporting cycle"
+      subtitle="Switch between cycles, create new ones, or edit current cycle dates"
+      className="bg-[var(--background-panel)]"
+      actions={
+        <CycleManager
+          slug={slug}
+          currentCycle={cycleSummary}
+          onCycleChanged={() => onChanged()}
+        />
+      }
+    >
+      <div className="grid gap-4 xl:grid-cols-[1fr_1fr]">
+        <div className={cardClass()}>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-faint)]">
+            Currently active
+          </div>
+          <div className="mt-2 text-2xl font-black text-[var(--foreground)]">
+            {activeCycle ? `Q${activeCycle.quarter} ${activeCycle.year}` : "No active cycle"}
+          </div>
+          <div className="mt-2 text-sm text-[var(--foreground-muted)]">
+            {activeCycle
+              ? "All new KPIs, OKRs, and AI generations will be tied to this cycle."
+              : "You need an active cycle before AI can generate KPIs."}
+          </div>
+        </div>
+
+        <div className={cardClass()}>
+          <div className="text-base font-bold text-[var(--foreground)]">When to change cycles</div>
+          <div className="mt-2 text-sm leading-7 text-[var(--foreground-muted)]">
+            Switch cycles at the start of a new reporting period (e.g. quarter end). Create a new cycle if the one you need doesn&apos;t exist yet. Edit dates only to correct mistakes — frequent changes can confuse historical reports.
           </div>
         </div>
       </div>
@@ -810,6 +868,11 @@ export default function SettingsPage() {
       <div className="mt-6 grid gap-6">
         <AppearanceCard />
         <WorkspaceSetupCard slug={orgSlug} />
+        <ReportingCycleCard
+          slug={orgSlug}
+          activeCycle={workspace?.activeCycle ?? null}
+          onChanged={() => void load()}
+        />
       </div>
 
       <div className="mt-6">

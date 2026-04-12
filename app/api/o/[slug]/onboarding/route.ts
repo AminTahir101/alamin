@@ -1,5 +1,7 @@
+// app/api/o/[slug]/onboarding/route.ts
+
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 
@@ -56,6 +58,26 @@ type CycleRow = {
 type DepartmentRow = {
   id: string;
   name: string;
+};
+
+type AuthUserLookup = {
+  userId: string;
+  email: string | null;
+};
+
+type ExistingKpiRow = {
+  id: string;
+  title: string;
+  department_id: string;
+  cycle_id: string;
+};
+
+type RefreshedKpiRow = {
+  id: string;
+  title: string;
+  department_id: string;
+  target_value: number | null;
+  current_value: number | null;
 };
 
 function json(data: unknown, status = 200) {
@@ -116,6 +138,164 @@ function mergeJson(
   return {
     ...(base ?? {}),
     ...patch,
+  };
+}
+
+function inferCompanySize(employeeCount: number | null | undefined) {
+  const count = Number(employeeCount ?? 0);
+  if (!Number.isFinite(count) || count <= 0) return "unknown";
+  if (count <= 10) return "1-10";
+  if (count <= 50) return "11-50";
+  if (count <= 200) return "51-200";
+  if (count <= 500) return "201-500";
+  if (count <= 1000) return "501-1000";
+  if (count <= 5000) return "1001-5000";
+  return "5000+";
+}
+
+function buildOrgAiContextText(args: {
+  companyName: string;
+  industry: string;
+  country: string;
+  employeeCount: number | null;
+  strategy: string;
+  departments: string[];
+}) {
+  return [
+    `Company: ${args.companyName}`,
+    `Industry: ${args.industry || "Unknown"}`,
+    `Country: ${args.country || "Unknown"}`,
+    `Employees: ${args.employeeCount ?? 0}`,
+    `Company size band: ${inferCompanySize(args.employeeCount)}`,
+    `Main strategy: ${args.strategy || "Not provided"}`,
+    `Departments: ${args.departments.join(", ") || "None"}`,
+  ].join("\n");
+}
+
+function buildDepartmentAiContextText(args: {
+  companyName: string;
+  industry: string;
+  country: string;
+  employeeCount: number | null;
+  strategy: string;
+  departmentName: string;
+  departmentHeadName: string;
+  departmentHeadEmail: string;
+}) {
+  return [
+    `Company: ${args.companyName}`,
+    `Industry: ${args.industry || "Unknown"}`,
+    `Country: ${args.country || "Unknown"}`,
+    `Employees: ${args.employeeCount ?? 0}`,
+    `Main strategy: ${args.strategy || "Not provided"}`,
+    `Department: ${args.departmentName}`,
+    `Department head name: ${args.departmentHeadName || "Not provided"}`,
+    `Department head email: ${args.departmentHeadEmail || "Not provided"}`,
+  ].join("\n");
+}
+
+function getAppBaseUrl(req: NextRequest) {
+  const envUrl =
+    process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
+    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+    "";
+
+  if (envUrl) return envUrl.replace(/\/+$/, "");
+  return req.nextUrl.origin.replace(/\/+$/, "");
+}
+
+async function findUserByEmail(
+  supabaseAdmin: SupabaseClient,
+  email: string
+): Promise<AuthUserLookup | null> {
+  const clean = cleanEmail(email);
+  if (!clean) return null;
+
+  let page = 1;
+  const perPage = 200;
+
+  while (page <= 10) {
+    const result = await supabaseAdmin.auth.admin.listUsers({
+      page,
+      perPage,
+    });
+
+    if (result.error) {
+      throw new Error(result.error.message);
+    }
+
+    const users = result.data?.users ?? [];
+    const matched = users.find((u) => cleanEmail(u.email) === clean);
+
+    if (matched) {
+      return {
+        userId: matched.id,
+        email: matched.email ?? null,
+      };
+    }
+
+    if (users.length < perPage) break;
+    page += 1;
+  }
+
+  return null;
+}
+
+async function inviteUsersByEmail(args: {
+  supabaseAdmin: SupabaseClient;
+  emails: string[];
+  redirectTo: string;
+  companyName: string;
+  orgSlug: string;
+  invitedByUserId: string;
+}) {
+  const emails = Array.from(
+    new Set(args.emails.map((e) => cleanEmail(e)).filter(Boolean))
+  );
+
+  const invited: string[] = [];
+  const skipped_existing: string[] = [];
+  const failed: Array<{ email: string; error: string }> = [];
+
+  for (const email of emails) {
+    try {
+      const existing = await findUserByEmail(args.supabaseAdmin, email);
+
+      if (existing) {
+        skipped_existing.push(email);
+        continue;
+      }
+
+      const result = await args.supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+        redirectTo: args.redirectTo,
+        data: {
+          org_slug: args.orgSlug,
+          company_name: args.companyName,
+          invited_by: args.invitedByUserId,
+        },
+      });
+
+      if (result.error) {
+        failed.push({
+          email,
+          error: result.error.message,
+        });
+        continue;
+      }
+
+      invited.push(email);
+    } catch (error: unknown) {
+      failed.push({
+        email,
+        error: error instanceof Error ? error.message : "Unknown invite error",
+      });
+    }
+  }
+
+  return {
+    invited,
+    skipped_existing,
+    failed,
   };
 }
 
@@ -221,7 +401,7 @@ export async function POST(
     const aiSetup = {
       mainStrategy: cleanText(body.aiSetup?.mainStrategy),
       departmentHeads: Array.isArray(body.aiSetup?.departmentHeads)
-        ? body.aiSetup!.departmentHeads.map((item) => ({
+        ? body.aiSetup.departmentHeads.map((item) => ({
             departmentName: cleanText(item.departmentName),
             headName: cleanText(item.headName),
             headEmail: cleanEmail(item.headEmail),
@@ -247,9 +427,11 @@ export async function POST(
       if (!title) {
         return json({ ok: false, error: "Each KPI must have a title" }, 400);
       }
+
       if (!departmentName) {
         return json({ ok: false, error: `KPI "${title}" is missing departmentName` }, 400);
       }
+
       if (!departmentNames.includes(departmentName)) {
         return json(
           {
@@ -259,9 +441,11 @@ export async function POST(
           400
         );
       }
+
       if (!unit) {
         return json({ ok: false, error: `KPI "${title}" is missing unit` }, 400);
       }
+
       if (!Number.isFinite(Number(kpi.target)) || !Number.isFinite(Number(kpi.current))) {
         return json({ ok: false, error: `KPI "${title}" has invalid target/current values` }, 400);
       }
@@ -269,7 +453,6 @@ export async function POST(
 
     const { starts_on, ends_on, name: cycleName } = quarterDates(year, quarter);
 
-    // 1) Organization: create or update
     const { data: existingOrg, error: existingOrgError } = await supabaseAdmin
       .from("organizations")
       .select("id, slug, name, settings")
@@ -288,6 +471,7 @@ export async function POST(
     }
 
     let orgId = existingOrg?.id ?? "";
+
     const onboardingSettings = {
       onboarding: {
         completed: true,
@@ -359,7 +543,6 @@ export async function POST(
       }
     }
 
-    // 2) Ensure owner membership
     const { data: existingMembership, error: membershipLookupError } = await supabaseAdmin
       .from("organization_members")
       .select("org_id, user_id, role")
@@ -385,9 +568,10 @@ export async function POST(
           org_id: orgId,
           user_id: createdBy,
           role: "owner",
-          title: personal.firstName || personal.lastName
-            ? `${personal.firstName} ${personal.lastName}`.trim()
-            : "Owner",
+          title:
+            personal.firstName || personal.lastName
+              ? `${personal.firstName} ${personal.lastName}`.trim()
+              : "Owner",
           joined_at: new Date().toISOString(),
           is_active: true,
         });
@@ -404,7 +588,6 @@ export async function POST(
       }
     }
 
-    // 3) Cycle: create or update
     const { data: existingCycle, error: cycleLookupError } = await supabaseAdmin
       .from("quarterly_cycles")
       .select("id, year, quarter, status")
@@ -427,6 +610,25 @@ export async function POST(
     let cycleId = existingCycle?.id ?? "";
 
     if (!existingCycle) {
+      // Close any currently-active cycle for this org to satisfy the
+      // uq_quarterly_cycles_one_active_per_org constraint.
+      const { error: closeActiveErr } = await supabaseAdmin
+        .from("quarterly_cycles")
+        .update({ status: "closed", updated_at: new Date().toISOString() })
+        .eq("org_id", orgId)
+        .eq("status", "active");
+
+      if (closeActiveErr) {
+        return json(
+          {
+            ok: false,
+            error: "Failed to close previous active cycle",
+            detail: closeActiveErr.message,
+          },
+          500
+        );
+      }
+
       const { data: insertedCycle, error: insertCycleError } = await supabaseAdmin
         .from("quarterly_cycles")
         .insert({
@@ -480,7 +682,6 @@ export async function POST(
       }
     }
 
-    // 4) Departments: insert missing ones
     const { data: existingDepartments, error: departmentsLookupError } = await supabaseAdmin
       .from("departments")
       .select("id, name")
@@ -502,19 +703,50 @@ export async function POST(
       (existingDepartments ?? []).map((d) => [d.name.toLowerCase(), d])
     );
 
+    // Delete any existing departments that are NOT in the submitted list.
+    // This cascades and removes all child KPIs/OKRs/JTBDs/tasks tied to them.
+    const submittedDeptNamesLower = new Set(
+      departmentNames.map((name) => name.toLowerCase())
+    );
+
+    const orphanDepartmentIds = (existingDepartments ?? [])
+      .filter((d) => !submittedDeptNamesLower.has(d.name.toLowerCase()))
+      .map((d) => d.id);
+
+    if (orphanDepartmentIds.length > 0) {
+      const { error: deleteOrphanDeptError } = await supabaseAdmin
+        .from("departments")
+        .delete()
+        .in("id", orphanDepartmentIds)
+        .eq("org_id", orgId);
+
+      if (deleteOrphanDeptError) {
+        return json(
+          {
+            ok: false,
+            error: "Failed to remove orphan departments",
+            detail: deleteOrphanDeptError.message,
+          },
+          500
+        );
+      }
+    }
+
     const missingDepartments = departmentNames.filter(
       (name) => !existingDepartmentMap.has(name.toLowerCase())
     );
 
     if (missingDepartments.length > 0) {
-      const { error: insertDepartmentsError } = await supabaseAdmin.from("departments").insert(
-        missingDepartments.map((name) => ({
-          org_id: orgId,
-          name,
-          created_by: createdBy,
-          description: null,
-        }))
-      );
+      const { error: insertDepartmentsError } = await supabaseAdmin
+        .from("departments")
+        .insert(
+          missingDepartments.map((name) => ({
+            org_id: orgId,
+            name,
+            created_by: createdBy,
+            description: null,
+          }))
+        );
 
       if (insertDepartmentsError) {
         return json(
@@ -549,16 +781,131 @@ export async function POST(
       (allDepartments ?? []).map((d) => [d.name.toLowerCase(), d.id])
     );
 
-    // 5) KPIs: insert if missing by same title + department + cycle
+    const orgAiProfilePayload = {
+      industry: company.industry || null,
+      sub_industry: null,
+      country: company.country || "Saudi Arabia",
+      employee_count: company.employeeCount,
+      company_size: inferCompanySize(company.employeeCount),
+      business_model: null,
+      maturity_stage:
+        company.employeeCount && company.employeeCount >= 1000 ? "enterprise" : "growth",
+      strategy_summary: aiSetup.mainStrategy || null,
+      strategic_priorities: aiSetup.mainStrategy ? [aiSetup.mainStrategy] : [],
+      profile_payload: {
+        personal,
+        company,
+        aiSetup,
+        departments: departmentNames,
+      },
+      ai_context_text: buildOrgAiContextText({
+        companyName,
+        industry: company.industry || "",
+        country: company.country || "Saudi Arabia",
+        employeeCount: company.employeeCount,
+        strategy: aiSetup.mainStrategy || "",
+        departments: departmentNames,
+      }),
+      created_by: createdBy,
+    };
+
+    const { error: orgAiProfileError } = await supabaseAdmin
+      .from("org_ai_profiles")
+      .upsert(
+        {
+          org_id: orgId,
+          ...orgAiProfilePayload,
+        },
+        { onConflict: "org_id" }
+      );
+
+    if (orgAiProfileError) {
+      return json(
+        {
+          ok: false,
+          error: "Failed to save org AI profile",
+          detail: orgAiProfileError.message,
+        },
+        500
+      );
+    }
+
+    const departmentHeadMap = new Map(
+      aiSetup.departmentHeads.map((h) => [h.departmentName.toLowerCase(), h])
+    );
+
+    const departmentAiRows: Array<Record<string, unknown>> = [];
+
+    for (const department of allDepartments ?? []) {
+      const head = departmentHeadMap.get(department.name.toLowerCase());
+      const existingAuthUser = head?.headEmail
+        ? await findUserByEmail(supabaseAdmin, head.headEmail)
+        : null;
+
+      departmentAiRows.push({
+        org_id: orgId,
+        department_id: department.id,
+        department_name: department.name,
+        department_head_user_id: existingAuthUser?.userId ?? null,
+        department_head_name: head?.headName || null,
+        department_head_email: head?.headEmail || null,
+        department_purpose: null,
+        strategic_role: aiSetup.mainStrategy
+          ? `Supports company strategy: ${aiSetup.mainStrategy}`
+          : null,
+        profile_payload: {
+          department_name: department.name,
+          department_head_name: head?.headName || null,
+          department_head_email: head?.headEmail || null,
+          strategy_summary: aiSetup.mainStrategy || null,
+        },
+        ai_context_text: buildDepartmentAiContextText({
+          companyName,
+          industry: company.industry || "",
+          country: company.country || "Saudi Arabia",
+          employeeCount: company.employeeCount,
+          strategy: aiSetup.mainStrategy || "",
+          departmentName: department.name,
+          departmentHeadName: head?.headName || "",
+          departmentHeadEmail: head?.headEmail || "",
+        }),
+        created_by: createdBy,
+      });
+    }
+
+    if (departmentAiRows.length > 0) {
+      const { error: departmentAiError } = await supabaseAdmin
+        .from("department_ai_profiles")
+        .upsert(departmentAiRows, { onConflict: "department_id" });
+
+      if (departmentAiError) {
+        return json(
+          {
+            ok: false,
+            error: "Failed to save department AI profiles",
+            detail: departmentAiError.message,
+          },
+          500
+        );
+      }
+    }
+
     if (kpis.length > 0) {
-      const departmentIds = Array.from(new Set(kpis.map((k) => departmentMap.get(k.departmentName.toLowerCase())).filter(Boolean))) as string[];
+      const departmentIds = Array.from(
+        new Set(
+          kpis
+            .map((k) => departmentMap.get(k.departmentName.toLowerCase()))
+            .filter(Boolean)
+        )
+      ) as string[];
 
       const { data: existingKpis, error: existingKpisError } = await supabaseAdmin
         .from("kpis")
         .select("id, title, department_id, cycle_id")
         .eq("org_id", orgId)
         .eq("cycle_id", cycleId)
-        .in("department_id", departmentIds);
+        .in("department_id", departmentIds)
+        .returns<ExistingKpiRow[]>();
 
       if (existingKpisError) {
         return json(
@@ -573,15 +920,13 @@ export async function POST(
 
       const existingKpiKey = new Set(
         (existingKpis ?? []).map(
-          (row: { title: string; department_id: string; cycle_id: string }) =>
-            `${row.title.toLowerCase()}::${row.department_id}::${row.cycle_id}`
+          (row) => `${row.title.toLowerCase()}::${row.department_id}::${row.cycle_id}`
         )
       );
 
       const kpisToInsert = kpis
         .map((kpi) => {
           const departmentId = departmentMap.get(kpi.departmentName.toLowerCase());
-
           if (!departmentId) return null;
 
           const title = cleanText(kpi.title);
@@ -590,9 +935,7 @@ export async function POST(
           const currentValue = Number(kpi.current);
           const key = `${title.toLowerCase()}::${departmentId}::${cycleId}`;
 
-          if (existingKpiKey.has(key)) {
-            return null;
-          }
+          if (existingKpiKey.has(key)) return null;
 
           return {
             org_id: orgId,
@@ -611,7 +954,7 @@ export async function POST(
             description: null,
           };
         })
-        .filter(Boolean);
+        .filter((row): row is NonNullable<typeof row> => row !== null);
 
       if (kpisToInsert.length > 0) {
         const { error: insertKpisError } = await supabaseAdmin
@@ -630,12 +973,12 @@ export async function POST(
         }
       }
 
-      // 6) KPI history snapshots
       const { data: insertedOrExistingKpis, error: refreshedKpisError } = await supabaseAdmin
         .from("kpis")
         .select("id, title, department_id, target_value, current_value")
         .eq("org_id", orgId)
-        .eq("cycle_id", cycleId);
+        .eq("cycle_id", cycleId)
+        .returns<RefreshedKpiRow[]>();
 
       if (refreshedKpisError) {
         return json(
@@ -649,10 +992,10 @@ export async function POST(
       }
 
       const refreshedKpiMap = new Map(
-        (insertedOrExistingKpis ?? []).map(
-          (row: { id: string; title: string; department_id: string }) =>
-            [`${row.title.toLowerCase()}::${row.department_id}`, row.id]
-        )
+        (insertedOrExistingKpis ?? []).map((row) => [
+          `${row.title.toLowerCase()}::${row.department_id}`,
+          row.id,
+        ])
       );
 
       const historyRows = kpis
@@ -660,7 +1003,9 @@ export async function POST(
           const departmentId = departmentMap.get(kpi.departmentName.toLowerCase());
           if (!departmentId) return null;
 
-          const kpiId = refreshedKpiMap.get(`${cleanText(kpi.title).toLowerCase()}::${departmentId}`);
+          const kpiId = refreshedKpiMap.get(
+            `${cleanText(kpi.title).toLowerCase()}::${departmentId}`
+          );
           if (!kpiId) return null;
 
           return {
@@ -674,7 +1019,7 @@ export async function POST(
             recorded_by: createdBy,
           };
         })
-        .filter(Boolean);
+        .filter((row): row is NonNullable<typeof row> => row !== null);
 
       if (historyRows.length > 0) {
         const { error: historyInsertError } = await supabaseAdmin
@@ -694,6 +1039,29 @@ export async function POST(
       }
     }
 
+    const appBaseUrl = getAppBaseUrl(req);
+    const inviteRedirectTo = `${appBaseUrl}/auth`;
+
+    const inviteTargets = Array.from(
+      new Set(
+        [
+          personal.email,
+          ...aiSetup.departmentHeads.map((h) => cleanEmail(h.headEmail)),
+        ]
+          .map((email) => cleanEmail(email))
+          .filter(Boolean)
+      )
+    );
+
+    const inviteResults = await inviteUsersByEmail({
+      supabaseAdmin,
+      emails: inviteTargets,
+      redirectTo: inviteRedirectTo,
+      companyName,
+      orgSlug,
+      invitedByUserId: createdBy,
+    });
+
     return json({
       ok: true,
       org: {
@@ -709,6 +1077,17 @@ export async function POST(
       },
       departments: departmentNames,
       kpiCount: kpis.length,
+      aiProfiles: {
+        org_ai_profile_saved: true,
+        department_ai_profiles_saved: true,
+        department_count: departmentNames.length,
+      },
+      invites: {
+        redirect_to: inviteRedirectTo,
+        invited: inviteResults.invited,
+        skipped_existing: inviteResults.skipped_existing,
+        failed: inviteResults.failed,
+      },
       persisted: {
         personal,
         company,
@@ -718,7 +1097,7 @@ export async function POST(
         },
       },
       note:
-        "Company fields were stored directly on organizations. Main strategy and department head metadata were stored in organizations.settings.onboarding because the current schema does not have dedicated relational columns for head name/head email.",
+        "Onboarding persists company setup, AI context profiles, and sends Supabase invites to new users only.",
     });
   } catch (err: unknown) {
     return json(

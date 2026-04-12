@@ -6,7 +6,6 @@ import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
 import { AppPageHeader, AppShell } from "@/components/app/AppShell";
 import SectionCard from "@/components/ui/SectionCard";
-<div className="text-red-500 text-3xl font-bold">NEW ONBOARDING VERSION</div>
 
 type OnboardingBody = {
   companyName: string;
@@ -14,13 +13,6 @@ type OnboardingBody = {
   year: number;
   quarter: number;
   departments: Array<{ name: string }>;
-  kpis: Array<{
-    title: string;
-    departmentName: string;
-    unit: string;
-    target: number;
-    current: number;
-  }>;
   personal?: {
     firstName: string;
     lastName: string;
@@ -69,14 +61,6 @@ type OnboardingDraft = {
     mainStrategy: string;
     departments: DraftDepartment[];
   };
-};
-
-type KPIFormRow = {
-  title: string;
-  departmentName: string;
-  unit: string;
-  target: string;
-  current: string;
 };
 
 const INDUSTRIES = [
@@ -151,9 +135,6 @@ function slugFromPathname(pathname: string | null): string {
   return String(parts[oIdx + 1] ?? "").trim();
 }
 
-function normalizeDepartmentName(value: string) {
-  return value.trim().toLowerCase();
-}
 
 function getQuarterLabel(q: number, year: number) {
   return `Q${q} ${year}`;
@@ -227,86 +208,12 @@ export default function OnboardingPage() {
     { name: "Delivery", headName: "", headEmail: "" },
   ]);
 
-  const [kpis, setKpis] = useState<KPIFormRow[]>([
-    {
-      title: "Bookings per week",
-      departmentName: "Sales",
-      unit: "count",
-      target: "40",
-      current: "10",
-    },
-    {
-      title: "On-time delivery rate",
-      departmentName: "Delivery",
-      unit: "%",
-      target: "95",
-      current: "82",
-    },
-    {
-      title: "Customer NPS",
-      departmentName: "Operations",
-      unit: "score",
-      target: "60",
-      current: "40",
-    },
-  ]);
-
   const cleanDepartments = useMemo(
     () => departments.map((d) => d.name.trim()).filter(Boolean),
     [departments]
   );
 
   const departmentOptions = useMemo(() => Array.from(new Set(cleanDepartments)), [cleanDepartments]);
-
-  const deptSet = useMemo(() => {
-    return new Set(cleanDepartments.map(normalizeDepartmentName));
-  }, [cleanDepartments]);
-
-  const invalidKpis = useMemo(() => {
-    return kpis
-      .map((kpi, index) => {
-        const issues: string[] = [];
-
-        if (!kpi.title.trim()) issues.push("Missing title");
-        if (!kpi.departmentName.trim()) issues.push("Missing department");
-        if (!kpi.unit.trim()) issues.push("Missing unit");
-        if (!Number.isFinite(Number(kpi.target))) issues.push("Invalid target");
-        if (!Number.isFinite(Number(kpi.current))) issues.push("Invalid current");
-
-        if (
-          kpi.departmentName.trim() &&
-          !deptSet.has(normalizeDepartmentName(kpi.departmentName))
-        ) {
-          issues.push("Department not found");
-        }
-
-        return issues.length ? { index, issues } : null;
-      })
-      .filter(Boolean) as Array<{ index: number; issues: string[] }>;
-  }, [deptSet, kpis]);
-
-  const stats = useMemo(() => {
-    const totalKpis = kpis.length;
-    const totalDepartments = departmentOptions.length;
-    const avgCompletion =
-      totalKpis > 0
-        ? Math.round(
-            kpis.reduce((sum, kpi) => {
-              const target = Number(kpi.target);
-              const current = Number(kpi.current);
-              if (!Number.isFinite(target) || target <= 0) return sum;
-              if (!Number.isFinite(current)) return sum;
-              return sum + Math.max(0, Math.min(100, (current / target) * 100));
-            }, 0) / totalKpis
-          )
-        : 0;
-
-    return {
-      totalDepartments,
-      totalKpis,
-      avgCompletion,
-    };
-  }, [departmentOptions.length, kpis]);
 
   const canContinueStep1 = useMemo(() => {
     return (
@@ -331,9 +238,8 @@ export default function OnboardingPage() {
     if (!canContinueStep2) return false;
     if (!mainStrategy.trim()) return false;
     if (!departmentOptions.length) return false;
-    if (invalidKpis.length > 0) return false;
     return true;
-  }, [orgSlug, canContinueStep1, canContinueStep2, mainStrategy, departmentOptions.length, invalidKpis.length]);
+  }, [orgSlug, canContinueStep1, canContinueStep2, mainStrategy, departmentOptions.length]);
 
   const persistDraft = useCallback(() => {
     const draft: OnboardingDraft = {
@@ -451,27 +357,6 @@ export default function OnboardingPage() {
     setDepartments((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)));
   }
 
-  function addKpi() {
-    setKpis((prev) => [
-      ...prev,
-      {
-        title: "",
-        departmentName: departmentOptions[0] ?? "",
-        unit: "count",
-        target: "0",
-        current: "0",
-      },
-    ]);
-  }
-
-  function removeKpi(index: number) {
-    setKpis((prev) => prev.filter((_, i) => i !== index));
-  }
-
-  function updateKpi(index: number, patch: Partial<KPIFormRow>) {
-    setKpis((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)));
-  }
-
   async function submit() {
     setMsg(null);
     setOkMsg(null);
@@ -489,13 +374,6 @@ export default function OnboardingPage() {
         departments: departments
           .map((d) => ({ name: d.name.trim() }))
           .filter((d) => d.name),
-        kpis: kpis.map((k) => ({
-          title: k.title.trim(),
-          departmentName: k.departmentName.trim(),
-          unit: k.unit.trim(),
-          target: Number(k.target),
-          current: Number(k.current),
-        })),
         personal: {
           firstName: firstName.trim(),
           lastName: lastName.trim(),
@@ -542,9 +420,9 @@ export default function OnboardingPage() {
       }
 
       clearDraft();
-      setOkMsg("Onboarding saved. Redirecting to dashboard...");
+      setOkMsg("Onboarding saved. Generating your AI setup...");
       setTimeout(() => {
-        router.push(`/o/${encodeURIComponent(orgSlug)}/dashboard`);
+        router.push(`/o/${encodeURIComponent(orgSlug)}/ai-setup`);
       }, 350);
     } catch (e: unknown) {
       setMsg(getErrorMessage(e, "Failed to submit onboarding"));
@@ -838,7 +716,7 @@ export default function OnboardingPage() {
                 <SummaryRow label="Organization email" value={orgEmail || "Not set"} />
                 <SummaryRow label="Company" value={companyName || "Not set"} />
                 <SummaryRow label="Departments" value={String(departmentOptions.length)} />
-                <SummaryRow label="KPIs" value={String(kpis.length)} />
+                <SummaryRow label="Next step" value="AI generates KPIs" />
               </div>
 
               <div className="mt-5 flex items-center justify-between gap-3">
@@ -935,143 +813,6 @@ export default function OnboardingPage() {
               ))}
             </div>
           </SectionCard>
-
-          <SectionCard
-            title="Initial KPI Layer"
-            subtitle="Seed the KPI layer that the rest of the product will build on"
-            actions={
-              <button
-                type="button"
-                onClick={addKpi}
-                className="inline-flex h-10 items-center justify-center rounded-full border border-white/12 bg-white/5 px-4 text-sm font-semibold text-white/85 transition hover:border-white/20 hover:bg-white/8"
-              >
-                Add KPI
-              </button>
-            }
-            className="bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.03))]"
-          >
-            <div className="grid gap-4">
-              {kpis.map((kpi, index) => {
-                const issues = invalidKpis.find((item) => item.index === index)?.issues ?? [];
-
-                return (
-                  <div
-                    key={`kpi-${index}`}
-                    className="rounded-[24px] border border-white/10 bg-white/[0.03] p-4"
-                  >
-                    <div className="mb-4 flex items-start justify-between gap-3">
-                      <div>
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">
-                          KPI {index + 1}
-                        </div>
-                        <div className="mt-1 text-sm text-white/55">
-                          Define one measurable business signal
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => removeKpi(index)}
-                        disabled={kpis.length <= 1}
-                        className="inline-flex h-10 items-center justify-center rounded-full border border-red-400/20 bg-red-400/8 px-4 text-sm font-semibold text-red-100 transition hover:bg-red-400/12 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        Remove
-                      </button>
-                    </div>
-
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <Field label="Title">
-                        <input
-                          value={kpi.title}
-                          onChange={(e) => updateKpi(index, { title: e.target.value })}
-                          className="h-11 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition placeholder:text-white/25 focus:border-white/20"
-                          placeholder="Bookings per week"
-                        />
-                      </Field>
-
-                      <Field label="Department">
-                        {departmentOptions.length > 0 ? (
-                          <select
-                            value={kpi.departmentName}
-                            onChange={(e) => updateKpi(index, { departmentName: e.target.value })}
-                            className="h-11 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition focus:border-white/20"
-                          >
-                            <option value="">Select department</option>
-                            {departmentOptions.map((departmentName) => (
-                              <option key={departmentName} value={departmentName} className="bg-[#0D1118] text-white">
-                                {departmentName}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          <input
-                            value={kpi.departmentName}
-                            onChange={(e) => updateKpi(index, { departmentName: e.target.value })}
-                            className="h-11 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition placeholder:text-white/25 focus:border-white/20"
-                            placeholder="Department name"
-                          />
-                        )}
-                      </Field>
-
-                      <Field label="Unit">
-                        <input
-                          value={kpi.unit}
-                          onChange={(e) => updateKpi(index, { unit: e.target.value })}
-                          className="h-11 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition placeholder:text-white/25 focus:border-white/20"
-                          placeholder="count, %, SAR, score"
-                        />
-                      </Field>
-
-                      <Field label="Target">
-                        <input
-                          value={kpi.target}
-                          onChange={(e) => updateKpi(index, { target: e.target.value })}
-                          className="h-11 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition placeholder:text-white/25 focus:border-white/20"
-                          inputMode="decimal"
-                          placeholder="100"
-                        />
-                      </Field>
-
-                      <Field label="Current">
-                        <input
-                          value={kpi.current}
-                          onChange={(e) => updateKpi(index, { current: e.target.value })}
-                          className="h-11 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition placeholder:text-white/25 focus:border-white/20"
-                          inputMode="decimal"
-                          placeholder="0"
-                        />
-                      </Field>
-
-                      <div className="rounded-[18px] border border-white/8 bg-black/20 px-4 py-3">
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">
-                          Progress preview
-                        </div>
-                        <div className="mt-2 text-lg font-semibold text-white">
-                          {getCompletionLabel(kpi.current, kpi.target)}
-                        </div>
-                        <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/8">
-                          <div
-                            className="h-full rounded-full bg-[linear-gradient(90deg,#7C3AED_0%,#22D3EE_100%)]"
-                            style={{ width: `${getCompletionPercent(kpi.current, kpi.target)}%` }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    {issues.length > 0 ? (
-                      <div className="mt-4 rounded-[18px] border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
-                        {issues.join(" · ")}
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="mt-5 rounded-[18px] border border-white/8 bg-black/20 px-4 py-3 text-sm text-white/50">
-              KPI department names must match one of the departments above.
-            </div>
-          </SectionCard>
         </div>
       ) : null}
     </AppShell>
@@ -1162,19 +903,4 @@ function MiniStep({
       </div>
     </div>
   );
-}
-
-function getCompletionPercent(current: string, target: string) {
-  const currentValue = Number(current);
-  const targetValue = Number(target);
-
-  if (!Number.isFinite(currentValue) || !Number.isFinite(targetValue) || targetValue <= 0) {
-    return 0;
-  }
-
-  return Math.max(0, Math.min(100, Math.round((currentValue / targetValue) * 100)));
-}
-
-function getCompletionLabel(current: string, target: string) {
-  return `${getCompletionPercent(current, target)}% of target`;
 }

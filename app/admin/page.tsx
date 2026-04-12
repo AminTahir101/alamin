@@ -101,7 +101,7 @@ function stringifySafe(value: unknown) {
 
 export default function AdminDashboardPage() {
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   const [msg, setMsg] = useState<string | null>(null);
