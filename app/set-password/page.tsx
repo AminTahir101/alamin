@@ -2,233 +2,245 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 
-function getErrorMessage(err: unknown, fallback: string): string {
+function getErrorMessage(err: unknown, fallback: string) {
   if (err instanceof Error) return err.message;
   if (typeof err === "string") return err;
-  if (err && typeof err === "object") {
-    const maybe = err as { message?: unknown };
-    if (typeof maybe.message === "string" && maybe.message.trim()) {
-      return maybe.message;
-    }
-  }
   return fallback;
 }
 
 export default function SetPasswordPage() {
   const router = useRouter();
 
-  const [booting, setBooting] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [sessionReady, setSessionReady] = useState(false);
   const [email, setEmail] = useState<string | null>(null);
+  const [orgSlug, setOrgSlug] = useState<string>("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
 
-  const canSubmit =
-    password.trim().length >= 8 &&
-    confirmPassword.trim().length >= 8 &&
-    password === confirmPassword &&
-    !saving;
+  const canSubmit = password.trim().length >= 8 && confirmPassword.trim().length >= 8;
 
-  // ─── Detect session from URL hash (recovery/invite token) ───────────────
   useEffect(() => {
-    let alive = true;
+    let active = true;
 
-    // Supabase SDK auto-parses tokens from the URL hash (#access_token=...)
-    // on page load. We wait briefly for it to establish a session, then
-    // check if we have one.
     async function boot() {
-      // Give the SDK a tick to parse the hash
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      try {
+        setLoading(true);
+        setMsg(null);
 
-      if (!alive) return;
+        const { data, error } = await supabase.auth.getSession();
 
-      const { data, error: sessionErr } = await supabase.auth.getSession();
+        if (error) {
+          throw error;
+        }
 
-      if (!alive) return;
+        const session = data.session;
 
-      if (sessionErr) {
-        setError(getErrorMessage(sessionErr, "Failed to read session"));
-        setBooting(false);
-        return;
+        if (!active) return;
+
+        if (!session) {
+          setMsg("This password setup link is invalid or expired. Request a new invite.");
+          setSessionReady(false);
+          return;
+        }
+
+        const user = session.user;
+        const invitedSlug = String(user.user_metadata?.invited_to_org_slug ?? "").trim();
+
+        setEmail(user.email ?? null);
+        setOrgSlug(invitedSlug);
+        setSessionReady(true);
+      } catch (err: unknown) {
+        if (!active) return;
+        setMsg(getErrorMessage(err, "Failed to load password setup"));
+      } finally {
+        if (!active) return;
+        setLoading(false);
       }
-
-      if (!data.session) {
-        setError(
-          "This password setup link is invalid or has expired. Request a new recovery email from the login page.",
-        );
-        setBooting(false);
-        return;
-      }
-
-      setEmail(data.session.user.email ?? null);
-      setSessionReady(true);
-      setBooting(false);
     }
 
     void boot();
 
     return () => {
-      alive = false;
+      active = false;
     };
   }, []);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setError(null);
+    setMsg(null);
     setOkMsg(null);
 
     if (!sessionReady) {
-      setError("No active recovery session. Request a new recovery email.");
+      setMsg("Session is not ready. Open the invite link again.");
       return;
     }
 
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters.");
+    if (password.trim().length < 8) {
+      setMsg("Password must be at least 8 characters.");
       return;
     }
 
     if (password !== confirmPassword) {
-      setError("Passwords do not match.");
+      setMsg("Passwords do not match.");
       return;
     }
 
     setSaving(true);
 
     try {
-      const { error: updateErr } = await supabase.auth.updateUser({
+      const { error } = await supabase.auth.updateUser({
         password,
       });
 
-      if (updateErr) {
-        throw updateErr;
+      if (error) {
+        throw error;
       }
 
-      setOkMsg("Password updated. Redirecting to login…");
+      setOkMsg("Password saved successfully.");
 
-      // Sign out the recovery session so the user logs in fresh with their
-      // new password. This is cleaner than keeping them auto-logged-in.
-      await supabase.auth.signOut();
+      const nextUrl = orgSlug
+        ? `/o/${encodeURIComponent(orgSlug)}/onboarding`
+        : "/auth";
 
-      setTimeout(() => {
-        router.replace("/auth");
-      }, 600);
+      window.setTimeout(() => {
+        router.replace(nextUrl);
+      }, 800);
     } catch (err: unknown) {
-      setError(getErrorMessage(err, "Failed to update password"));
+      setMsg(getErrorMessage(err, "Failed to save password"));
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[var(--background)] px-6 py-16">
-      <div className="w-full max-w-md">
-        <div className="mb-8 text-center">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--foreground-faint)]">
-            ALAMIN
-          </div>
-          <h1 className="mt-3 text-3xl font-black tracking-tight text-[var(--foreground)]">
-            Set your password
-          </h1>
-          <p className="mt-3 text-sm leading-6 text-[var(--foreground-muted)]">
-            {email
-              ? `Create a password for ${email} to finish setup.`
-              : "Create a password to finish account setup."}
-          </p>
-        </div>
+    <div className="min-h-screen bg-background text-foreground">
+      <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,rgba(99,102,241,0.22),transparent_32%),radial-gradient(circle_at_top_right,rgba(34,211,238,0.12),transparent_24%)]" />
 
-        <div className="rounded-[28px] border border-[var(--border)] bg-[var(--card)] p-6 shadow-lg">
-          {booting ? (
-            <div className="flex items-center justify-center gap-3 py-10 text-sm text-[var(--foreground-muted)]">
-              <div className="h-5 w-5 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--foreground)]" />
-              Reading recovery link…
+      <header className="sticky top-0 z-30 border-b border-border bg-background/80 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4 lg:px-8">
+          <Link href="/" className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-border-strong bg-card alamin-glow">
+              <div className="h-5 w-5 rounded-full bg-[linear-gradient(135deg,#6d5efc_0%,#37cfff_100%)]" />
             </div>
-          ) : !sessionReady ? (
-            <div className="space-y-4">
-              <div className="rounded-2xl border border-red-400/30 bg-red-400/10 px-4 py-3 text-sm text-red-300">
-                {error || "Recovery link invalid."}
+            <div>
+              <div className="text-sm font-semibold tracking-[0.22em] text-(--foreground-soft)">
+                ALAMIN
               </div>
-              <button
-                type="button"
-                onClick={() => router.push("/auth")}
-                className="w-full rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-5 py-3 text-sm font-medium text-[var(--foreground)] hover:bg-[var(--button-secondary-hover)]"
-              >
-                Back to login
-              </button>
+              <div className="text-sm text-(--foreground-muted)">
+                AI Performance Intelligence
+              </div>
             </div>
-          ) : (
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-faint)]">
-                  New password
-                </label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  autoComplete="new-password"
-                  disabled={saving}
-                  minLength={8}
-                  className="mt-1 w-full rounded-2xl border border-[var(--border)] bg-[var(--background-elevated)] px-4 py-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--border-active)]"
-                  placeholder="At least 8 characters"
-                />
-              </div>
+          </Link>
 
-              <div>
-                <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-faint)]">
-                  Confirm password
-                </label>
-                <input
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  autoComplete="new-password"
-                  disabled={saving}
-                  minLength={8}
-                  className="mt-1 w-full rounded-2xl border border-[var(--border)] bg-[var(--background-elevated)] px-4 py-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--border-active)]"
-                  placeholder="Re-enter your password"
-                />
-              </div>
-
-              {error && (
-                <div className="rounded-2xl border border-red-400/30 bg-red-400/10 px-4 py-3 text-sm text-red-300">
-                  {error}
-                </div>
-              )}
-
-              {okMsg && (
-                <div className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">
-                  {okMsg}
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={!canSubmit}
-                className="w-full rounded-2xl border border-[var(--border)] bg-[var(--foreground)] px-5 py-3 text-sm font-semibold text-[var(--background)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {saving ? "Saving…" : "Set password and continue"}
-              </button>
-            </form>
-          )}
-        </div>
-
-        <div className="mt-6 text-center text-xs text-[var(--foreground-faint)]">
-          Having trouble? Request a new recovery email from the{" "}
-          <button
-            type="button"
-            onClick={() => router.push("/auth")}
-            className="underline hover:text-[var(--foreground-muted)]"
+          <Link
+            href="/auth"
+            className="inline-flex h-11 items-center justify-center rounded-full border border-border bg-(--button-secondary-bg) px-5 text-sm font-medium text-(--foreground-soft) transition hover:border-border-strong hover:bg-(--button-secondary-hover)"
           >
-            login page
-          </button>
-          .
+            Back to login
+          </Link>
         </div>
-      </div>
-    </main>
+      </header>
+
+      <main className="mx-auto flex min-h-[calc(100vh-76px)] max-w-7xl items-center justify-center px-6 py-10 lg:px-8 lg:py-14">
+        <section className="relative w-full max-w-2xl">
+          <div className="absolute inset-0 rounded-[32px] bg-[linear-gradient(135deg,rgba(109,94,252,0.18),rgba(55,207,255,0.08))] blur-2xl" />
+          <div className="relative overflow-hidden rounded-[32px] border border-border-strong bg-(--background-panel) p-5 alamin-glow md:p-6">
+            <div className="rounded-[26px] border border-border bg-(--background-elevated) p-5 md:p-6">
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-(--foreground-faint)">
+                Password setup
+              </div>
+
+              <h1 className="mt-3 text-3xl font-semibold tracking-tight text-foreground">
+                Create your password
+              </h1>
+
+              <p className="mt-3 text-sm leading-7 text-(--foreground-muted)">
+                Save a permanent password for your invited account, then continue into your company onboarding flow.
+              </p>
+
+              {loading ? (
+                <div className="mt-6 grid gap-4">
+                  <div className="h-12 animate-pulse rounded-2xl bg-[var(--border)]" />
+                  <div className="h-12 animate-pulse rounded-2xl bg-[var(--border)]" />
+                  <div className="h-12 animate-pulse rounded-2xl bg-[var(--border)]" />
+                </div>
+              ) : (
+                <>
+                  <div className="mt-6 rounded-[20px] border border-border bg-(--card-subtle) p-4 text-sm text-(--foreground-muted)">
+                    <div>
+                      <span className="font-semibold text-foreground">Email:</span>{" "}
+                      {email ?? "—"}
+                    </div>
+                    <div className="mt-2">
+                      <span className="font-semibold text-foreground">Organization:</span>{" "}
+                      {orgSlug || "Pending routing"}
+                    </div>
+                  </div>
+
+                  {msg ? (
+                    <div className="mt-5 rounded-[20px] border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-100">
+                      {msg}
+                    </div>
+                  ) : null}
+
+                  {okMsg ? (
+                    <div className="mt-5 rounded-[20px] border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">
+                      {okMsg}
+                    </div>
+                  ) : null}
+
+                  <form onSubmit={handleSubmit} className="mt-6 grid gap-4">
+                    <div className="grid gap-2">
+                      <label htmlFor="password" className="text-sm font-medium text-(--foreground-soft)">
+                        New password
+                      </label>
+                      <input
+                        id="password"
+                        type="password"
+                        autoComplete="new-password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="Enter a new password"
+                        className="h-12 w-full rounded-2xl border border-border bg-(--button-secondary-bg) px-4 text-foreground outline-none placeholder:text-(--foreground-faint) transition focus:border-border-strong"
+                      />
+                    </div>
+
+                    <div className="grid gap-2">
+                      <label htmlFor="confirm-password" className="text-sm font-medium text-(--foreground-soft)">
+                        Confirm password
+                      </label>
+                      <input
+                        id="confirm-password"
+                        type="password"
+                        autoComplete="new-password"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        placeholder="Confirm your password"
+                        className="h-12 w-full rounded-2xl border border-border bg-(--button-secondary-bg) px-4 text-foreground outline-none placeholder:text-(--foreground-faint) transition focus:border-border-strong"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={saving || !sessionReady || !canSubmit}
+                      className="mt-2 inline-flex h-12 items-center justify-center rounded-full bg-foreground px-5 text-sm font-semibold text-background transition hover:opacity-92 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {saving ? "Saving password..." : "Save password and continue"}
+                    </button>
+                  </form>
+                </>
+              )}
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
   );
 }

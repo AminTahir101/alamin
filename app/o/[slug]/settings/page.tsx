@@ -8,7 +8,6 @@ import { supabase } from "@/lib/supabaseClient";
 import { AppPageHeader, AppShell } from "@/components/app/AppShell";
 import SectionCard from "@/components/ui/SectionCard";
 import StatusBadge from "@/components/ui/StatusBadge";
-import CycleManager, { type CycleSummary } from "@/components/cycles/CycleManager";
 
 type Role =
   | "owner"
@@ -165,32 +164,44 @@ function AppearanceCard() {
   const [theme, setTheme] = useState<ThemeMode>(() => readTheme());
 
   useEffect(() => {
-    applyTheme(theme);
-  }, [theme]);
+    // Re-read the theme after mount to sync with client-side storage.
+    // This is the canonical pattern for avoiding hydration mismatches
+    // when state depends on localStorage or other browser-only sources.
+    setTheme(readTheme());
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
-    const timeout = window.setTimeout(() => {
-      setMounted(true);
-    }, 0);
-
-    return () => window.clearTimeout(timeout);
-  }, []);
+    if (!mounted) return;
+    applyTheme(theme);
+  }, [theme, mounted]);
 
   const changeTheme = (nextTheme: ThemeMode) => {
     setTheme(nextTheme);
   };
 
+  // On first render (server + pre-hydration client), render a neutral
+  // skeleton so the server-rendered HTML matches the initial client
+  // output. After mount we swap in the real theme-dependent UI.
+  const daylightActive = mounted && theme === "daylight";
+  const nightActive = mounted && theme === "night";
+  const currentThemeLabel = mounted
+    ? theme === "night"
+      ? "Night mode"
+      : "Daylight mode"
+    : "Loading…";
+
   return (
     <SectionCard
-      title="Appearance"
-      subtitle="Control workspace theme from one place"
+      title="Theme"
+      subtitle="Switch between daylight and night mode"
       className="bg-[var(--background-panel)]"
     >
       <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
         <div className={cardClass()}>
           <div className="text-sm font-semibold text-[var(--foreground)]">Theme mode</div>
           <div className="mt-2 text-sm leading-7 text-[var(--foreground-muted)]">
-            Daylight is better for bright environments. Night keeps the interface lower glare and more focused.
+            Daylight is easier on the eyes in bright rooms. Night reduces glare and helps you focus.
           </div>
 
           <div className="mt-5 flex flex-wrap gap-3">
@@ -200,7 +211,7 @@ function AppearanceCard() {
               disabled={!mounted}
               className={[
                 "inline-flex h-11 items-center justify-center rounded-full border px-5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60",
-                theme === "daylight"
+                daylightActive
                   ? "border-[var(--border-active)] bg-[var(--foreground)] text-[var(--background)]"
                   : "border-[var(--border)] bg-[var(--button-secondary-bg)] text-[var(--foreground)] hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]",
               ].join(" ")}
@@ -214,7 +225,7 @@ function AppearanceCard() {
               disabled={!mounted}
               className={[
                 "inline-flex h-11 items-center justify-center rounded-full border px-5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60",
-                theme === "night"
+                nightActive
                   ? "border-[var(--border-active)] bg-[var(--foreground)] text-[var(--background)]"
                   : "border-[var(--border)] bg-[var(--button-secondary-bg)] text-[var(--foreground)] hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]",
               ].join(" ")}
@@ -225,69 +236,12 @@ function AppearanceCard() {
         </div>
 
         <div className={cardClass()}>
-          <div className="text-sm font-semibold text-[var(--foreground)]">Current preference</div>
+          <div className="text-sm font-semibold text-[var(--foreground)]">Current theme</div>
           <div className="mt-4 flex items-center gap-3">
-            <StatusBadge tone="info">{theme === "night" ? "Night mode" : "Daylight mode"}</StatusBadge>
+            <StatusBadge tone="info">{currentThemeLabel}</StatusBadge>
           </div>
           <div className="mt-4 text-sm leading-7 text-[var(--foreground-muted)]">
-            The theme switch was removed from the sidebar and homepage. Settings is now the only place that controls it.
-          </div>
-        </div>
-      </div>
-    </SectionCard>
-  );
-}
-
-function ReportingCycleCard({
-  slug,
-  activeCycle,
-  onChanged,
-}: {
-  slug: string;
-  activeCycle: { id: string; year: number; quarter: number; status: string } | null;
-  onChanged: () => void;
-}) {
-  const cycleSummary: CycleSummary | null = activeCycle
-    ? {
-        id: activeCycle.id,
-        year: activeCycle.year,
-        quarter: activeCycle.quarter,
-        status: activeCycle.status,
-      }
-    : null;
-
-  return (
-    <SectionCard
-      title="Reporting cycle"
-      subtitle="Switch between cycles, create new ones, or edit current cycle dates"
-      className="bg-[var(--background-panel)]"
-      actions={
-        <CycleManager
-          slug={slug}
-          currentCycle={cycleSummary}
-          onCycleChanged={() => onChanged()}
-        />
-      }
-    >
-      <div className="grid gap-4 xl:grid-cols-[1fr_1fr]">
-        <div className={cardClass()}>
-          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-faint)]">
-            Currently active
-          </div>
-          <div className="mt-2 text-2xl font-black text-[var(--foreground)]">
-            {activeCycle ? `Q${activeCycle.quarter} ${activeCycle.year}` : "No active cycle"}
-          </div>
-          <div className="mt-2 text-sm text-[var(--foreground-muted)]">
-            {activeCycle
-              ? "All new KPIs, OKRs, and AI generations will be tied to this cycle."
-              : "You need an active cycle before AI can generate KPIs."}
-          </div>
-        </div>
-
-        <div className={cardClass()}>
-          <div className="text-base font-bold text-[var(--foreground)]">When to change cycles</div>
-          <div className="mt-2 text-sm leading-7 text-[var(--foreground-muted)]">
-            Switch cycles at the start of a new reporting period (e.g. quarter end). Create a new cycle if the one you need doesn&apos;t exist yet. Edit dates only to correct mistakes — frequent changes can confuse historical reports.
+            You can change your theme here anytime. The choice applies across your whole workspace.
           </div>
         </div>
       </div>
@@ -298,15 +252,15 @@ function ReportingCycleCard({
 function WorkspaceSetupCard({ slug }: { slug: string }) {
   return (
     <SectionCard
-      title="Workspace Setup"
-      subtitle="Access onboarding from settings instead of the sidebar"
+      title="Workspace setup"
+      subtitle="Update your company profile and strategy"
       className="bg-[var(--background-panel)]"
     >
       <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
         <div className={cardClass()}>
-          <div className="text-base font-bold text-[var(--foreground)]">Onboarding management</div>
+          <div className="text-base font-bold text-[var(--foreground)]">Revisit onboarding</div>
           <div className="mt-2 text-sm leading-7 text-[var(--foreground-muted)]">
-            Update the original company setup, strategy, department heads, and seeded KPI layer from the onboarding flow.
+            Update your company info, strategy, departments, or KPIs. The onboarding flow will walk you through the same steps you completed before.
           </div>
 
           <div className="mt-5 flex flex-wrap gap-3">
@@ -327,19 +281,19 @@ function WorkspaceSetupCard({ slug }: { slug: string }) {
         </div>
 
         <div className={cardClass()}>
-          <div className="text-sm font-semibold text-[var(--foreground)]">What changed</div>
+          <div className="text-sm font-semibold text-[var(--foreground)]">Recent changes</div>
           <div className="mt-4 grid gap-3">
             <MiniSettingItem
-              title="Theme toggle moved"
-              desc="No more appearance switch in the sidebar."
+              title="Theme is in Settings"
+              desc="Appearance controls now live here."
             />
             <MiniSettingItem
-              title="Onboarding moved"
-              desc="No more onboarding item in workspace navigation."
+              title="Onboarding is in Settings"
+              desc="Revisit your setup from this page."
             />
             <MiniSettingItem
-              title="Trends removed"
-              desc="The Trends section was removed from navigation."
+              title="Trends view removed"
+              desc="The Trends view was retired. KPI history is on each KPI page."
             />
           </div>
         </div>
@@ -422,7 +376,7 @@ export default function SettingsPage() {
       const parsed = (await safeParseJson(raw)) as SettingsResponse | null;
 
       if (!res.ok || !parsed || parsed.ok !== true) {
-        throw new Error(parsed?.error || raw || `Failed to load settings (HTTP ${res.status})`);
+        throw new Error(parsed?.error || raw || `Couldn't load your settings (HTTP ${res.status})`);
       }
 
       setOrg(parsed.org);
@@ -432,7 +386,7 @@ export default function SettingsPage() {
       setMembers(Array.isArray(parsed.members) ? parsed.members : []);
       setOrgName(parsed.org?.name ?? "");
     } catch (e: unknown) {
-      setMsg(getErrorMessage(e, "Failed to load settings"));
+      setMsg(getErrorMessage(e, "Couldn't load your settings. Try refreshing."));
     } finally {
       setLoading(false);
     }
@@ -450,13 +404,13 @@ export default function SettingsPage() {
 
   const handleSaveOrganization = useCallback(async () => {
     if (!member?.permissions?.canManageOrg) {
-      setMsg("Only org admins can update organization settings");
+      setMsg("Only admins can update workspace settings.");
       return;
     }
 
     const nextName = orgName.trim();
     if (!nextName) {
-      setMsg("Organization name is required");
+      setMsg("Workspace name is required.");
       return;
     }
 
@@ -484,16 +438,16 @@ export default function SettingsPage() {
       const parsed = (await safeParseJson(raw)) as SettingsResponse | null;
 
       if (!res.ok || !parsed || parsed.ok !== true) {
-        throw new Error(parsed?.error || raw || `Failed to update settings (HTTP ${res.status})`);
+        throw new Error(parsed?.error || raw || `Couldn't save workspace settings (HTTP ${res.status})`);
       }
 
       setOrg(parsed.org);
       setOrgName(parsed.org?.name ?? nextName);
-      setSuccess(parsed.message ?? "Organization settings updated");
+      setSuccess(parsed.message ?? "Workspace settings saved.");
       setDepartments(Array.isArray(parsed.departments) ? parsed.departments : []);
       setMembers(Array.isArray(parsed.members) ? parsed.members : []);
     } catch (e: unknown) {
-      setMsg(getErrorMessage(e, "Failed to update organization settings"));
+      setMsg(getErrorMessage(e, "Couldn't save workspace settings. Try again."));
     } finally {
       setSavingOrg(false);
     }
@@ -503,17 +457,17 @@ export default function SettingsPage() {
     const email = inviteEmail.trim().toLowerCase();
 
     if (!member?.permissions?.canInviteMembers) {
-      setMsg("Only the owner can add members");
+      setMsg("Only the workspace owner can invite teammates.");
       return;
     }
 
     if (!email) {
-      setMsg("Member email is required");
+      setMsg("Work email is required.");
       return;
     }
 
     if (roleSupportsDepartment(inviteRole) && !inviteDepartmentId) {
-      setMsg("Select a department for Department Head or Employee");
+      setMsg("Department is required for Department Heads and Employees.");
       return;
     }
 
@@ -542,7 +496,7 @@ export default function SettingsPage() {
       const parsed = (await safeParseJson(raw)) as SettingsResponse | null;
 
       if (!res.ok || !parsed || parsed.ok !== true) {
-        throw new Error(parsed?.error || raw || `Failed to add member (HTTP ${res.status})`);
+        throw new Error(parsed?.error || raw || `Couldn't send the invite (HTTP ${res.status})`);
       }
 
       setInviteEmail("");
@@ -550,9 +504,9 @@ export default function SettingsPage() {
       setInviteDepartmentId("");
       setDepartments(Array.isArray(parsed.departments) ? parsed.departments : []);
       setMembers(Array.isArray(parsed.members) ? parsed.members : []);
-      setSuccess(parsed.message ?? "Member added successfully");
+      setSuccess(parsed.message ?? "Invite sent.");
     } catch (e: unknown) {
-      setMsg(getErrorMessage(e, "Failed to add member"));
+      setMsg(getErrorMessage(e, "Couldn't send the invite. Try again."));
     } finally {
       setInviting(false);
     }
@@ -574,7 +528,7 @@ export default function SettingsPage() {
   const handleChangeRole = useCallback(
     async (userId: string) => {
       if (!member?.permissions?.canInviteMembers) {
-        setMsg("Only the owner can change roles");
+        setMsg("Only the workspace owner can change roles.");
         return;
       }
 
@@ -603,15 +557,15 @@ export default function SettingsPage() {
         const parsed = (await safeParseJson(raw)) as SettingsResponse | null;
 
         if (!res.ok || !parsed || parsed.ok !== true) {
-          throw new Error(parsed?.error || raw || `Failed to update member role (HTTP ${res.status})`);
+          throw new Error(parsed?.error || raw || `Couldn't update their role (HTTP ${res.status})`);
         }
 
         setEditingMemberId(null);
         setDepartments(Array.isArray(parsed.departments) ? parsed.departments : []);
         setMembers(Array.isArray(parsed.members) ? parsed.members : []);
-        setSuccess(parsed.message ?? "Member role updated");
+        setSuccess(parsed.message ?? "Role updated.");
       } catch (e: unknown) {
-        setMsg(getErrorMessage(e, "Failed to update member role"));
+        setMsg(getErrorMessage(e, "Couldn't update their role. Try again."));
       } finally {
         setUpdatingMemberId(null);
       }
@@ -627,7 +581,7 @@ export default function SettingsPage() {
   const handleSaveDepartmentAssign = useCallback(
     async (userId: string) => {
       if (!member?.permissions?.canInviteMembers) {
-        setMsg("Only the owner can assign departments");
+        setMsg("Only the workspace owner can assign departments.");
         return;
       }
 
@@ -656,16 +610,16 @@ export default function SettingsPage() {
         const parsed = (await safeParseJson(raw)) as SettingsResponse | null;
 
         if (!res.ok || !parsed || parsed.ok !== true) {
-          throw new Error(parsed?.error || raw || `Failed to assign department (HTTP ${res.status})`);
+          throw new Error(parsed?.error || raw || `Couldn't update their department (HTTP ${res.status})`);
         }
 
         setAssigningMemberId(null);
         setAssignDepartmentId("");
         setDepartments(Array.isArray(parsed.departments) ? parsed.departments : []);
         setMembers(Array.isArray(parsed.members) ? parsed.members : []);
-        setSuccess(parsed.message ?? "Department assignment updated");
+        setSuccess(parsed.message ?? "Department updated.");
       } catch (e: unknown) {
-        setMsg(getErrorMessage(e, "Failed to assign department"));
+        setMsg(getErrorMessage(e, "Couldn't update their department. Try again."));
       } finally {
         setUpdatingMemberId(null);
       }
@@ -676,12 +630,12 @@ export default function SettingsPage() {
   const handleRemoveMember = useCallback(
     async (targetUserId: string, targetEmail: string | null) => {
       if (!member?.permissions?.canInviteMembers) {
-        setMsg("Only the owner can remove members");
+        setMsg("Only the workspace owner can remove members.");
         return;
       }
 
       if (targetUserId === member.userId) {
-        setMsg("You cannot remove yourself from the organization");
+        setMsg("You can't remove yourself from the workspace.");
         return;
       }
 
@@ -711,7 +665,7 @@ export default function SettingsPage() {
         const parsed = (await safeParseJson(raw)) as SettingsResponse | null;
 
         if (!res.ok || !parsed || parsed.ok !== true) {
-          throw new Error(parsed?.error || raw || `Failed to remove member (HTTP ${res.status})`);
+          throw new Error(parsed?.error || raw || `Couldn't remove the member (HTTP ${res.status})`);
         }
 
         if (editingMemberId === targetUserId) setEditingMemberId(null);
@@ -719,9 +673,9 @@ export default function SettingsPage() {
 
         setDepartments(Array.isArray(parsed.departments) ? parsed.departments : []);
         setMembers(Array.isArray(parsed.members) ? parsed.members : []);
-        setSuccess(parsed.message ?? "Member removed successfully");
+        setSuccess(parsed.message ?? "Member removed.");
       } catch (e: unknown) {
-        setMsg(getErrorMessage(e, "Failed to remove member"));
+        setMsg(getErrorMessage(e, "Couldn't remove the member. Try again."));
       } finally {
         setRemovingMemberId(null);
       }
@@ -739,7 +693,7 @@ export default function SettingsPage() {
       <AppPageHeader
         eyebrow="Workspace settings"
         title="Settings"
-        description="Manage organization details, members, theme preferences, onboarding access, and account context."
+        description="Manage your workspace, invite teammates, and adjust preferences."
         actions={
           <div className="flex items-center gap-3">
             <button
@@ -747,7 +701,7 @@ export default function SettingsPage() {
               onClick={() => void load()}
               className={actionGhostClass()}
             >
-              Refresh
+              Reload
             </button>
           </div>
         }
@@ -766,7 +720,7 @@ export default function SettingsPage() {
       ) : null}
 
       <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        <SectionCard title="Organization settings" subtitle="Core workspace identity and admin-managed configuration.">
+        <SectionCard title="Workspace identity" subtitle="Your workspace name and basic info">
           {loading ? (
             <div className="space-y-4">
               <div className="h-24 animate-pulse rounded-[20px] border border-[var(--border)] bg-[var(--card)]" />
@@ -776,18 +730,18 @@ export default function SettingsPage() {
             <div className="space-y-5">
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-[var(--foreground-soft)]">Organization name</label>
+                  <label className="mb-2 block text-sm font-medium text-[var(--foreground-soft)]">Workspace name</label>
                   <input
                     value={orgName}
                     onChange={(e) => setOrgName(e.target.value)}
                     disabled={!member?.permissions?.canManageOrg || savingOrg}
                     className={inputClass()}
-                    placeholder="Enter organization name"
+                    placeholder="e.g. Acme Inc."
                   />
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-[var(--foreground-soft)]">Organization slug</label>
+                  <label className="mb-2 block text-sm font-medium text-[var(--foreground-soft)]">Workspace URL</label>
                   <input
                     value={org?.slug ?? ""}
                     disabled
@@ -827,7 +781,7 @@ export default function SettingsPage() {
           )}
         </SectionCard>
 
-        <SectionCard title="Account" subtitle="Current signed-in user and workspace access level.">
+        <SectionCard title="Your account" subtitle="Your sign-in and role in this workspace">
           {loading ? (
             <div className="h-52 animate-pulse rounded-[20px] border border-[var(--border)] bg-[var(--card)]" />
           ) : (
@@ -838,7 +792,7 @@ export default function SettingsPage() {
                 </div>
                 <div className="min-w-0">
                   <div className="truncate text-base font-bold text-[var(--foreground)]">{sessionEmail ?? "Signed-in user"}</div>
-                  <div className="mt-1 text-sm text-[var(--foreground-muted)]">Workspace member</div>
+                  <div className="mt-1 text-sm text-[var(--foreground-muted)]">Signed in</div>
                 </div>
               </div>
 
@@ -868,15 +822,10 @@ export default function SettingsPage() {
       <div className="mt-6 grid gap-6">
         <AppearanceCard />
         <WorkspaceSetupCard slug={orgSlug} />
-        <ReportingCycleCard
-          slug={orgSlug}
-          activeCycle={workspace?.activeCycle ?? null}
-          onChanged={() => void load()}
-        />
       </div>
 
       <div className="mt-6">
-        <SectionCard title="Members" subtitle="Owner-only invites, role changes, removal, and department assignment.">
+        <SectionCard title="Team members" subtitle="Invite teammates, assign roles, and manage departments. Owner-only actions.">
           {loading ? (
             <div className="space-y-4">
               <div className="h-28 animate-pulse rounded-[20px] border border-[var(--border)] bg-[var(--card)]" />
@@ -885,14 +834,14 @@ export default function SettingsPage() {
           ) : (
             <div className="space-y-5">
               <div className={cardClass()}>
-                <div className="text-base font-bold text-[var(--foreground)]">Add member</div>
+                <div className="text-base font-bold text-[var(--foreground)]">Invite a teammate</div>
                 <div className="mt-1 text-sm text-[var(--foreground-muted)]">
-                  Department Head and Employee must be assigned to a department at creation time.
+                  Pick a role. Department Heads and Employees must be assigned to a department up front.
                 </div>
 
                 <div className="mt-4 grid gap-4 md:grid-cols-2">
                   <div>
-                    <label className="mb-2 block text-sm font-medium text-[var(--foreground-soft)]">Email</label>
+                    <label className="mb-2 block text-sm font-medium text-[var(--foreground-soft)]">Work email</label>
                     <input
                       value={inviteEmail}
                       onChange={(e) => setInviteEmail(e.target.value)}
@@ -929,7 +878,7 @@ export default function SettingsPage() {
                       className={inputClass()}
                     >
                       <option value="" className="bg-[var(--background)] text-[var(--foreground)]">
-                        Select department
+                        Choose a department
                       </option>
                       {departments.map((dept) => (
                         <option key={dept.id} value={dept.id} className="bg-[var(--background)] text-[var(--foreground)]">
@@ -947,7 +896,7 @@ export default function SettingsPage() {
                     disabled={!member?.permissions?.canInviteMembers || inviting || !inviteEmail.trim()}
                     className={actionPrimaryClass()}
                   >
-                    {inviting ? "Adding..." : "Add member"}
+                    {inviting ? "Sending..." : "Send invite"}
                   </button>
                 </div>
               </div>
@@ -955,7 +904,7 @@ export default function SettingsPage() {
               <div className={cardClass()}>
                 <div className="text-base font-bold text-[var(--foreground)]">Current members</div>
                 <div className="mt-1 text-sm text-[var(--foreground-muted)]">
-                  After changing someone to Department Head or Employee, click Assign department.
+                  When you change someone to Department Head or Employee, assign their department next.
                 </div>
 
                 {members.length ? (
@@ -984,7 +933,7 @@ export default function SettingsPage() {
 
                                   {supportsDepartment ? (
                                     <span className={subtlePillClass()}>
-                                      {item.departmentName ?? "No department"}
+                                      {item.departmentName ?? "No department yet"}
                                     </span>
                                   ) : null}
 
@@ -1057,7 +1006,7 @@ export default function SettingsPage() {
                                     disabled={updatingMemberId === item.userId}
                                     className={actionPrimaryClass()}
                                   >
-                                    {updatingMemberId === item.userId ? "Saving..." : "Save"}
+                                    {updatingMemberId === item.userId ? "Saving..." : "Save role"}
                                   </button>
 
                                   <button
@@ -1081,7 +1030,7 @@ export default function SettingsPage() {
                                   className={inputClass()}
                                 >
                                   <option value="" className="bg-[var(--background)] text-[var(--foreground)]">
-                                    Select department
+                                    Choose a department
                                   </option>
                                   {departments.map((dept) => (
                                     <option key={dept.id} value={dept.id} className="bg-[var(--background)] text-[var(--foreground)]">
@@ -1097,7 +1046,7 @@ export default function SettingsPage() {
                                     disabled={updatingMemberId === item.userId}
                                     className={actionPrimaryClass()}
                                   >
-                                    {updatingMemberId === item.userId ? "Saving..." : "Save"}
+                                    {updatingMemberId === item.userId ? "Saving..." : "Save department"}
                                   </button>
 
                                   <button
@@ -1118,7 +1067,7 @@ export default function SettingsPage() {
                   </div>
                 ) : (
                   <div className="mt-4 rounded-2xl border border-[var(--border)] bg-[var(--card-subtle)] px-4 py-8 text-center text-sm text-[var(--foreground-muted)]">
-                    No members found.
+                    No members yet. Invite your first teammate above.
                   </div>
                 )}
               </div>

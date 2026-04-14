@@ -6,6 +6,7 @@ import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
 import { AppPageHeader, AppShell } from "@/components/app/AppShell";
 import SectionCard from "@/components/ui/SectionCard";
+<div className="text-red-500 text-3xl font-bold">NEW ONBOARDING VERSION</div>
 
 type OnboardingBody = {
   companyName: string;
@@ -13,6 +14,13 @@ type OnboardingBody = {
   year: number;
   quarter: number;
   departments: Array<{ name: string }>;
+  kpis: Array<{
+    title: string;
+    departmentName: string;
+    unit: string;
+    target: number;
+    current: number;
+  }>;
   personal?: {
     firstName: string;
     lastName: string;
@@ -61,6 +69,14 @@ type OnboardingDraft = {
     mainStrategy: string;
     departments: DraftDepartment[];
   };
+};
+
+type KPIFormRow = {
+  title: string;
+  departmentName: string;
+  unit: string;
+  target: string;
+  current: string;
 };
 
 const INDUSTRIES = [
@@ -135,6 +151,9 @@ function slugFromPathname(pathname: string | null): string {
   return String(parts[oIdx + 1] ?? "").trim();
 }
 
+function normalizeDepartmentName(value: string) {
+  return value.trim().toLowerCase();
+}
 
 function getQuarterLabel(q: number, year: number) {
   return `Q${q} ${year}`;
@@ -208,12 +227,86 @@ export default function OnboardingPage() {
     { name: "Delivery", headName: "", headEmail: "" },
   ]);
 
+  const [kpis, setKpis] = useState<KPIFormRow[]>([
+    {
+      title: "Bookings per week",
+      departmentName: "Sales",
+      unit: "count",
+      target: "40",
+      current: "10",
+    },
+    {
+      title: "On-time delivery rate",
+      departmentName: "Delivery",
+      unit: "%",
+      target: "95",
+      current: "82",
+    },
+    {
+      title: "Customer NPS",
+      departmentName: "Operations",
+      unit: "score",
+      target: "60",
+      current: "40",
+    },
+  ]);
+
   const cleanDepartments = useMemo(
     () => departments.map((d) => d.name.trim()).filter(Boolean),
     [departments]
   );
 
   const departmentOptions = useMemo(() => Array.from(new Set(cleanDepartments)), [cleanDepartments]);
+
+  const deptSet = useMemo(() => {
+    return new Set(cleanDepartments.map(normalizeDepartmentName));
+  }, [cleanDepartments]);
+
+  const invalidKpis = useMemo(() => {
+    return kpis
+      .map((kpi, index) => {
+        const issues: string[] = [];
+
+        if (!kpi.title.trim()) issues.push("Missing title");
+        if (!kpi.departmentName.trim()) issues.push("Missing department");
+        if (!kpi.unit.trim()) issues.push("Missing unit");
+        if (!Number.isFinite(Number(kpi.target))) issues.push("Invalid target");
+        if (!Number.isFinite(Number(kpi.current))) issues.push("Invalid current");
+
+        if (
+          kpi.departmentName.trim() &&
+          !deptSet.has(normalizeDepartmentName(kpi.departmentName))
+        ) {
+          issues.push("Department not found");
+        }
+
+        return issues.length ? { index, issues } : null;
+      })
+      .filter(Boolean) as Array<{ index: number; issues: string[] }>;
+  }, [deptSet, kpis]);
+
+  const stats = useMemo(() => {
+    const totalKpis = kpis.length;
+    const totalDepartments = departmentOptions.length;
+    const avgCompletion =
+      totalKpis > 0
+        ? Math.round(
+            kpis.reduce((sum, kpi) => {
+              const target = Number(kpi.target);
+              const current = Number(kpi.current);
+              if (!Number.isFinite(target) || target <= 0) return sum;
+              if (!Number.isFinite(current)) return sum;
+              return sum + Math.max(0, Math.min(100, (current / target) * 100));
+            }, 0) / totalKpis
+          )
+        : 0;
+
+    return {
+      totalDepartments,
+      totalKpis,
+      avgCompletion,
+    };
+  }, [departmentOptions.length, kpis]);
 
   const canContinueStep1 = useMemo(() => {
     return (
@@ -238,8 +331,9 @@ export default function OnboardingPage() {
     if (!canContinueStep2) return false;
     if (!mainStrategy.trim()) return false;
     if (!departmentOptions.length) return false;
+    if (invalidKpis.length > 0) return false;
     return true;
-  }, [orgSlug, canContinueStep1, canContinueStep2, mainStrategy, departmentOptions.length]);
+  }, [orgSlug, canContinueStep1, canContinueStep2, mainStrategy, departmentOptions.length, invalidKpis.length]);
 
   const persistDraft = useCallback(() => {
     const draft: OnboardingDraft = {
@@ -357,6 +451,27 @@ export default function OnboardingPage() {
     setDepartments((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)));
   }
 
+  function addKpi() {
+    setKpis((prev) => [
+      ...prev,
+      {
+        title: "",
+        departmentName: departmentOptions[0] ?? "",
+        unit: "count",
+        target: "0",
+        current: "0",
+      },
+    ]);
+  }
+
+  function removeKpi(index: number) {
+    setKpis((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function updateKpi(index: number, patch: Partial<KPIFormRow>) {
+    setKpis((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+  }
+
   async function submit() {
     setMsg(null);
     setOkMsg(null);
@@ -374,6 +489,13 @@ export default function OnboardingPage() {
         departments: departments
           .map((d) => ({ name: d.name.trim() }))
           .filter((d) => d.name),
+        kpis: kpis.map((k) => ({
+          title: k.title.trim(),
+          departmentName: k.departmentName.trim(),
+          unit: k.unit.trim(),
+          target: Number(k.target),
+          current: Number(k.current),
+        })),
         personal: {
           firstName: firstName.trim(),
           lastName: lastName.trim(),
@@ -420,9 +542,9 @@ export default function OnboardingPage() {
       }
 
       clearDraft();
-      setOkMsg("Onboarding saved. Generating your AI setup...");
+      setOkMsg("Onboarding saved. Redirecting to dashboard...");
       setTimeout(() => {
-        router.push(`/o/${encodeURIComponent(orgSlug)}/ai-setup`);
+        router.push(`/o/${encodeURIComponent(orgSlug)}/dashboard`);
       }, 350);
     } catch (e: unknown) {
       setMsg(getErrorMessage(e, "Failed to submit onboarding"));
@@ -440,7 +562,7 @@ export default function OnboardingPage() {
           <button
             type="button"
             onClick={() => router.push(`/o/${encodeURIComponent(orgSlug)}/dashboard`)}
-            className="inline-flex h-11 items-center justify-center rounded-full border border-white/12 bg-white/5 px-5 text-sm font-medium text-white/90 transition hover:border-white/20 hover:bg-white/8"
+            className="inline-flex h-11 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-5 text-sm font-medium text-[var(--foreground-soft)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
           >
             Skip for now
           </button>
@@ -448,7 +570,7 @@ export default function OnboardingPage() {
             type="button"
             onClick={() => void submit()}
             disabled={!canSubmit || saving || loading}
-            className="inline-flex h-11 items-center justify-center rounded-full bg-white px-5 text-sm font-semibold text-[#07090D] transition hover:bg-white/92 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex h-11 items-center justify-center rounded-full bg-[var(--foreground)] px-5 text-sm font-semibold text-[var(--background)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {saving ? "Saving..." : "Complete onboarding"}
           </button>
@@ -489,14 +611,14 @@ export default function OnboardingPage() {
           <SectionCard
             title="A. Personal Info"
             subtitle="Start with the person responsible for setting up the workspace"
-            className="bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.03))]"
+            className=""
           >
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="First name">
                 <input
                   value={firstName}
                   onChange={(e) => setFirstName(e.target.value)}
-                  className="h-12 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition placeholder:text-white/25 focus:border-white/20"
+                  className="h-12 rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none transition placeholder:text-[var(--foreground-faint)] focus:border-[var(--border-strong)]"
                   placeholder="First name"
                 />
               </Field>
@@ -505,7 +627,7 @@ export default function OnboardingPage() {
                 <input
                   value={lastName}
                   onChange={(e) => setLastName(e.target.value)}
-                  className="h-12 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition placeholder:text-white/25 focus:border-white/20"
+                  className="h-12 rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none transition placeholder:text-[var(--foreground-faint)] focus:border-[var(--border-strong)]"
                   placeholder="Last name"
                 />
               </Field>
@@ -515,7 +637,7 @@ export default function OnboardingPage() {
                   <input
                     value={orgEmail}
                     onChange={(e) => setOrgEmail(e.target.value)}
-                    className="h-12 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition placeholder:text-white/25 focus:border-white/20"
+                    className="h-12 rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none transition placeholder:text-[var(--foreground-faint)] focus:border-[var(--border-strong)]"
                     placeholder="name@company.com"
                     type="email"
                   />
@@ -528,7 +650,7 @@ export default function OnboardingPage() {
                 type="button"
                 onClick={() => setStep(2)}
                 disabled={!canContinueStep1}
-                className="inline-flex h-11 items-center justify-center rounded-full bg-white px-5 text-sm font-semibold text-[#07090D] transition hover:bg-white/92 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex h-11 items-center justify-center rounded-full bg-[var(--foreground)] px-5 text-sm font-semibold text-[var(--background)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Continue to company info
               </button>
@@ -538,7 +660,7 @@ export default function OnboardingPage() {
           <SectionCard
             title="Why this matters"
             subtitle="Get the workspace owner and initial context right"
-            className="bg-[linear-gradient(180deg,rgba(124,58,237,0.12),rgba(255,255,255,0.03))]"
+            className="bg-[linear-gradient(180deg,rgba(124,58,237,0.08),transparent)]"
           >
             <div className="grid gap-3">
               <MiniStep
@@ -566,14 +688,14 @@ export default function OnboardingPage() {
           <SectionCard
             title="B. Company Info"
             subtitle="Define the company identity and business context"
-            className="bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.03))]"
+            className=""
           >
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="Company name">
                 <input
                   value={companyName}
                   onChange={(e) => setCompanyName(e.target.value)}
-                  className="h-12 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition placeholder:text-white/25 focus:border-white/20"
+                  className="h-12 rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none transition placeholder:text-[var(--foreground-faint)] focus:border-[var(--border-strong)]"
                   placeholder="Company name"
                 />
               </Field>
@@ -585,7 +707,7 @@ export default function OnboardingPage() {
                 <input
                   value={registrationNumber}
                   onChange={(e) => setRegistrationNumber(e.target.value)}
-                  className="h-12 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition placeholder:text-white/25 focus:border-white/20"
+                  className="h-12 rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none transition placeholder:text-[var(--foreground-faint)] focus:border-[var(--border-strong)]"
                   placeholder="CR Number"
                 />
               </Field>
@@ -594,10 +716,10 @@ export default function OnboardingPage() {
                 <select
                   value={industry}
                   onChange={(e) => setIndustry(e.target.value)}
-                  className="h-12 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition focus:border-white/20"
+                  className="h-12 rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none transition focus:border-[var(--border-strong)]"
                 >
                   {INDUSTRIES.map((item) => (
-                    <option key={item} value={item} className="bg-[#0D1118] text-white">
+                    <option key={item} value={item}>
                       {item}
                     </option>
                   ))}
@@ -608,10 +730,10 @@ export default function OnboardingPage() {
                 <select
                   value={country}
                   onChange={(e) => setCountry(e.target.value)}
-                  className="h-12 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition focus:border-white/20"
+                  className="h-12 rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none transition focus:border-[var(--border-strong)]"
                 >
                   {COUNTRIES.map((item) => (
-                    <option key={item} value={item} className="bg-[#0D1118] text-white">
+                    <option key={item} value={item}>
                       {item}
                     </option>
                   ))}
@@ -622,7 +744,7 @@ export default function OnboardingPage() {
                 <input
                   value={employeeCount}
                   onChange={(e) => setEmployeeCount(e.target.value)}
-                  className="h-12 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition placeholder:text-white/25 focus:border-white/20"
+                  className="h-12 rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none transition placeholder:text-[var(--foreground-faint)] focus:border-[var(--border-strong)]"
                   placeholder="e.g. 500"
                   type="number"
                   inputMode="numeric"
@@ -634,14 +756,14 @@ export default function OnboardingPage() {
                   <input
                     value={String(year)}
                     onChange={(e) => setYear(toNumber(e.target.value, year))}
-                    className="h-12 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition placeholder:text-white/25 focus:border-white/20"
+                    className="h-12 rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none transition placeholder:text-[var(--foreground-faint)] focus:border-[var(--border-strong)]"
                     inputMode="numeric"
                     placeholder="2026"
                   />
                   <select
                     value={String(quarter)}
                     onChange={(e) => setQuarter(toNumber(e.target.value, quarter))}
-                    className="h-12 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition focus:border-white/20"
+                    className="h-12 rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none transition focus:border-[var(--border-strong)]"
                   >
                     <option value="1">Q1</option>
                     <option value="2">Q2</option>
@@ -656,7 +778,7 @@ export default function OnboardingPage() {
               <button
                 type="button"
                 onClick={() => setStep(1)}
-                className="inline-flex h-11 items-center justify-center rounded-full border border-white/12 bg-white/5 px-5 text-sm font-medium text-white/90 transition hover:border-white/20 hover:bg-white/8"
+                className="inline-flex h-11 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-5 text-sm font-medium text-[var(--foreground-soft)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
               >
                 Back
               </button>
@@ -665,7 +787,7 @@ export default function OnboardingPage() {
                 type="button"
                 onClick={() => setStep(3)}
                 disabled={!canContinueStep2}
-                className="inline-flex h-11 items-center justify-center rounded-full bg-white px-5 text-sm font-semibold text-[#07090D] transition hover:bg-white/92 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex h-11 items-center justify-center rounded-full bg-[var(--foreground)] px-5 text-sm font-semibold text-[var(--background)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Continue to AI setup
               </button>
@@ -675,7 +797,7 @@ export default function OnboardingPage() {
           <SectionCard
             title="Company summary"
             subtitle="How the workspace will be initialized"
-            className="bg-[linear-gradient(180deg,rgba(124,58,237,0.12),rgba(255,255,255,0.03))]"
+            className="bg-[linear-gradient(180deg,rgba(124,58,237,0.08),transparent)]"
           >
             <div className="grid gap-3">
               <SummaryRow label="Company" value={companyName || "Not set"} />
@@ -694,13 +816,13 @@ export default function OnboardingPage() {
             <SectionCard
               title="C. Setup your AI"
               subtitle="Give the product the right strategic and organizational foundation"
-              className="bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.03))]"
+              className=""
             >
               <Field label="Main Company Strategy" hint="This becomes the starting context for AI generation">
                 <textarea
                   value={mainStrategy}
                   onChange={(e) => setMainStrategy(e.target.value)}
-                  className="min-h-[180px] rounded-[22px] border border-white/10 bg-black/20 px-4 py-4 text-white outline-none transition placeholder:text-white/25 focus:border-white/20"
+                  className="min-h-[180px] rounded-[22px] border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 py-4 text-[var(--foreground)] outline-none transition placeholder:text-[var(--foreground-faint)] focus:border-[var(--border-strong)]"
                   placeholder="Example: Grow enterprise revenue by improving sales efficiency, onboarding conversion, and cross-department execution discipline across the next two quarters."
                 />
               </Field>
@@ -709,21 +831,21 @@ export default function OnboardingPage() {
             <SectionCard
               title="Setup summary"
               subtitle="What this onboarding will create"
-              className="bg-[linear-gradient(180deg,rgba(124,58,237,0.12),rgba(255,255,255,0.03))]"
+              className="bg-[linear-gradient(180deg,rgba(124,58,237,0.08),transparent)]"
             >
               <div className="grid gap-3">
                 <SummaryRow label="Owner" value={`${firstName} ${lastName}`.trim() || "Not set"} />
                 <SummaryRow label="Organization email" value={orgEmail || "Not set"} />
                 <SummaryRow label="Company" value={companyName || "Not set"} />
                 <SummaryRow label="Departments" value={String(departmentOptions.length)} />
-                <SummaryRow label="Next step" value="AI generates KPIs" />
+                <SummaryRow label="KPIs" value={String(kpis.length)} />
               </div>
 
               <div className="mt-5 flex items-center justify-between gap-3">
                 <button
                   type="button"
                   onClick={() => setStep(2)}
-                  className="inline-flex h-11 items-center justify-center rounded-full border border-white/12 bg-white/5 px-5 text-sm font-medium text-white/90 transition hover:border-white/20 hover:bg-white/8"
+                  className="inline-flex h-11 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-5 text-sm font-medium text-[var(--foreground-soft)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
                 >
                   Back
                 </button>
@@ -732,7 +854,7 @@ export default function OnboardingPage() {
                   type="button"
                   onClick={() => void submit()}
                   disabled={!canSubmit || saving || loading}
-                  className="inline-flex h-11 items-center justify-center rounded-full bg-white px-5 text-sm font-semibold text-[#07090D] transition hover:bg-white/92 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="inline-flex h-11 items-center justify-center rounded-full bg-[var(--foreground)] px-5 text-sm font-semibold text-[var(--background)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {saving ? "Saving..." : "Complete onboarding"}
                 </button>
@@ -747,25 +869,25 @@ export default function OnboardingPage() {
               <button
                 type="button"
                 onClick={addDepartment}
-                className="inline-flex h-10 items-center justify-center rounded-full border border-white/12 bg-white/5 px-4 text-sm font-semibold text-white/85 transition hover:border-white/20 hover:bg-white/8"
+                className="inline-flex h-10 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-sm font-semibold text-[var(--foreground-soft)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
               >
                 Add department
               </button>
             }
-            className="bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.03))]"
+            className=""
           >
             <div className="grid gap-4">
               {departments.map((department, index) => (
                 <div
                   key={`department-${index}`}
-                  className="rounded-[24px] border border-white/10 bg-white/[0.03] p-4"
+                  className="rounded-[24px] border border-[var(--border)] bg-[var(--card-subtle)] p-4"
                 >
                   <div className="mb-4 flex items-start justify-between gap-3">
                     <div>
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
                         Department {index + 1}
                       </div>
-                      <div className="mt-1 text-sm text-white/55">
+                      <div className="mt-1 text-sm text-[var(--foreground-muted)]">
                         Department name and accountable head
                       </div>
                     </div>
@@ -785,7 +907,7 @@ export default function OnboardingPage() {
                       <input
                         value={department.name}
                         onChange={(e) => updateDepartment(index, { name: e.target.value })}
-                        className="h-11 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition placeholder:text-white/25 focus:border-white/20"
+                        className="h-11 rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none transition placeholder:text-[var(--foreground-faint)] focus:border-[var(--border-strong)]"
                         placeholder="Sales"
                       />
                     </Field>
@@ -794,7 +916,7 @@ export default function OnboardingPage() {
                       <input
                         value={department.headName}
                         onChange={(e) => updateDepartment(index, { headName: e.target.value })}
-                        className="h-11 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition placeholder:text-white/25 focus:border-white/20"
+                        className="h-11 rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none transition placeholder:text-[var(--foreground-faint)] focus:border-[var(--border-strong)]"
                         placeholder="Head name"
                       />
                     </Field>
@@ -803,7 +925,7 @@ export default function OnboardingPage() {
                       <input
                         value={department.headEmail}
                         onChange={(e) => updateDepartment(index, { headEmail: e.target.value })}
-                        className="h-11 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition placeholder:text-white/25 focus:border-white/20"
+                        className="h-11 rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none transition placeholder:text-[var(--foreground-faint)] focus:border-[var(--border-strong)]"
                         placeholder="head@company.com"
                         type="email"
                       />
@@ -811,6 +933,143 @@ export default function OnboardingPage() {
                   </div>
                 </div>
               ))}
+            </div>
+          </SectionCard>
+
+          <SectionCard
+            title="Initial KPI Layer"
+            subtitle="Seed the KPI layer that the rest of the product will build on"
+            actions={
+              <button
+                type="button"
+                onClick={addKpi}
+                className="inline-flex h-10 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-sm font-semibold text-[var(--foreground-soft)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
+              >
+                Add KPI
+              </button>
+            }
+            className=""
+          >
+            <div className="grid gap-4">
+              {kpis.map((kpi, index) => {
+                const issues = invalidKpis.find((item) => item.index === index)?.issues ?? [];
+
+                return (
+                  <div
+                    key={`kpi-${index}`}
+                    className="rounded-[24px] border border-[var(--border)] bg-[var(--card-subtle)] p-4"
+                  >
+                    <div className="mb-4 flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
+                          KPI {index + 1}
+                        </div>
+                        <div className="mt-1 text-sm text-[var(--foreground-muted)]">
+                          Define one measurable business signal
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => removeKpi(index)}
+                        disabled={kpis.length <= 1}
+                        className="inline-flex h-10 items-center justify-center rounded-full border border-red-400/20 bg-red-400/8 px-4 text-sm font-semibold text-red-100 transition hover:bg-red-400/12 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Remove
+                      </button>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <Field label="Title">
+                        <input
+                          value={kpi.title}
+                          onChange={(e) => updateKpi(index, { title: e.target.value })}
+                          className="h-11 rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none transition placeholder:text-[var(--foreground-faint)] focus:border-[var(--border-strong)]"
+                          placeholder="Bookings per week"
+                        />
+                      </Field>
+
+                      <Field label="Department">
+                        {departmentOptions.length > 0 ? (
+                          <select
+                            value={kpi.departmentName}
+                            onChange={(e) => updateKpi(index, { departmentName: e.target.value })}
+                            className="h-11 rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none transition focus:border-[var(--border-strong)]"
+                          >
+                            <option value="">Select department</option>
+                            {departmentOptions.map((departmentName) => (
+                              <option key={departmentName} value={departmentName}>
+                                {departmentName}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input
+                            value={kpi.departmentName}
+                            onChange={(e) => updateKpi(index, { departmentName: e.target.value })}
+                            className="h-11 rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none transition placeholder:text-[var(--foreground-faint)] focus:border-[var(--border-strong)]"
+                            placeholder="Department name"
+                          />
+                        )}
+                      </Field>
+
+                      <Field label="Unit">
+                        <input
+                          value={kpi.unit}
+                          onChange={(e) => updateKpi(index, { unit: e.target.value })}
+                          className="h-11 rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none transition placeholder:text-[var(--foreground-faint)] focus:border-[var(--border-strong)]"
+                          placeholder="count, %, SAR, score"
+                        />
+                      </Field>
+
+                      <Field label="Target">
+                        <input
+                          value={kpi.target}
+                          onChange={(e) => updateKpi(index, { target: e.target.value })}
+                          className="h-11 rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none transition placeholder:text-[var(--foreground-faint)] focus:border-[var(--border-strong)]"
+                          inputMode="decimal"
+                          placeholder="100"
+                        />
+                      </Field>
+
+                      <Field label="Current">
+                        <input
+                          value={kpi.current}
+                          onChange={(e) => updateKpi(index, { current: e.target.value })}
+                          className="h-11 rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none transition placeholder:text-[var(--foreground-faint)] focus:border-[var(--border-strong)]"
+                          inputMode="decimal"
+                          placeholder="0"
+                        />
+                      </Field>
+
+                      <div className="rounded-[18px] border border-[var(--border)] bg-[var(--card-subtle)] px-4 py-3">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
+                          Progress preview
+                        </div>
+                        <div className="mt-2 text-lg font-semibold text-[var(--foreground)]">
+                          {getCompletionLabel(kpi.current, kpi.target)}
+                        </div>
+                        <div className="mt-2 h-2 overflow-hidden rounded-full bg-[var(--border)]">
+                          <div
+                            className="h-full rounded-full bg-[linear-gradient(90deg,#7C3AED_0%,#22D3EE_100%)]"
+                            style={{ width: `${getCompletionPercent(kpi.current, kpi.target)}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {issues.length > 0 ? (
+                      <div className="mt-4 rounded-[18px] border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
+                        {issues.join(" · ")}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="mt-5 rounded-[18px] border border-[var(--border)] bg-[var(--card-subtle)] px-4 py-3 text-sm text-[var(--foreground-muted)]">
+              KPI department names must match one of the departments above.
             </div>
           </SectionCard>
         </div>
@@ -829,10 +1088,10 @@ function Field({
   children: React.ReactNode;
 }) {
   return (
-    <label className="grid gap-2 text-sm text-white/68">
+    <label className="grid gap-2 text-sm text-[var(--foreground-soft)]">
       <div className="flex items-center justify-between gap-3">
         <span>{label}</span>
-        {hint ? <span className="text-xs text-white/35">{hint}</span> : null}
+        {hint ? <span className="text-xs text-[var(--foreground-faint)]">{hint}</span> : null}
       </div>
       {children}
     </label>
@@ -853,17 +1112,17 @@ function SummaryStat({
   return (
     <div
       className={[
-        "rounded-[24px] border p-5 shadow-[0_16px_36px_rgba(0,0,0,0.22)]",
+        "rounded-[24px] border p-5 alamin-shadow",
         active
-          ? "border-[#A78BFA]/35 bg-[linear-gradient(180deg,rgba(124,58,237,0.2),rgba(255,255,255,0.06))]"
-          : "border-white/10 bg-white/[0.04]",
+          ? "border-[#7c3aed]/45 bg-[rgba(124,58,237,0.12)] ring-1 ring-[#7c3aed]/20"
+          : "border-[var(--border)] bg-[var(--card-subtle)]",
       ].join(" ")}
     >
-      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
         {label}
       </div>
-      <div className="mt-3 text-2xl font-semibold tracking-tight text-white">{value}</div>
-      <div className="mt-2 text-sm text-white/55">{hint}</div>
+      <div className="mt-3 text-2xl font-semibold tracking-tight text-[var(--foreground)]">{value}</div>
+      <div className="mt-2 text-sm text-[var(--foreground-muted)]">{hint}</div>
     </div>
   );
 }
@@ -876,9 +1135,9 @@ function SummaryRow({
   value: string;
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 rounded-[18px] border border-white/8 bg-black/20 px-4 py-3">
-      <div className="text-sm text-white/50">{label}</div>
-      <div className="max-w-[60%] text-right text-sm font-semibold text-white">{value}</div>
+    <div className="flex items-start justify-between gap-4 rounded-[18px] border border-[var(--border)] bg-[var(--card-subtle)] px-4 py-3">
+      <div className="text-sm text-[var(--foreground-muted)]">{label}</div>
+      <div className="max-w-[60%] text-right text-sm font-semibold text-[var(--foreground)]">{value}</div>
     </div>
   );
 }
@@ -893,14 +1152,29 @@ function MiniStep({
   desc: string;
 }) {
   return (
-    <div className="flex gap-3 rounded-[18px] border border-white/8 bg-black/20 p-3">
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-xs font-semibold text-white">
+    <div className="flex gap-3 rounded-[18px] border border-[var(--border)] bg-[var(--card-subtle)] p-3">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--card-subtle)] text-xs font-semibold text-[var(--foreground)]">
         {step}
       </div>
       <div>
-        <div className="text-sm font-semibold text-white">{title}</div>
-        <div className="mt-1 text-sm leading-6 text-white/55">{desc}</div>
+        <div className="text-sm font-semibold text-[var(--foreground)]">{title}</div>
+        <div className="mt-1 text-sm leading-6 text-[var(--foreground-muted)]">{desc}</div>
       </div>
     </div>
   );
+}
+
+function getCompletionPercent(current: string, target: string) {
+  const currentValue = Number(current);
+  const targetValue = Number(target);
+
+  if (!Number.isFinite(currentValue) || !Number.isFinite(targetValue) || targetValue <= 0) {
+    return 0;
+  }
+
+  return Math.max(0, Math.min(100, Math.round((currentValue / targetValue) * 100)));
+}
+
+function getCompletionLabel(current: string, target: string) {
+  return `${getCompletionPercent(current, target)}% of target`;
 }

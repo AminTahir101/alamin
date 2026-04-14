@@ -382,7 +382,7 @@ export default function DashboardPage() {
       <AppPageHeader
         eyebrow={cycleLabel(cycle)}
         title="Dashboard"
-        description="A decision surface for leadership. See company health, execution pressure, weak KPIs, department performance, and the latest AI insight in one place."
+        description="Your company in one view. Performance, execution, the weak spots, and what to do about them."
       />
 
       {loading ? (
@@ -439,13 +439,13 @@ export default function DashboardPage() {
                   hint={company?.label ?? "No label"}
                 />
                 <InsightMetric
-                  label="At-risk KPIs"
+                  label="KPIs at risk"
                   value={numberFmt(stats.atRiskKpis)}
                   tone={stats.atRiskKpis > 0 ? "warning" : "success"}
                   hint={`${numberFmt(stats.onTrackKpis)} on track`}
                 />
                 <InsightMetric
-                  label="Open execution"
+                  label="Open tasks"
                   value={numberFmt(stats.openTasks)}
                   tone={
                     stats.overdueTasks > 0
@@ -464,7 +464,7 @@ export default function DashboardPage() {
 
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <StatCard
-              title="Company Score"
+              title="Company score"
               value={numberFmt(stats.companyScore)}
               hint={company?.label ?? "No score available"}
               trend="Blended from KPI, OKR, objective, and task execution"
@@ -477,7 +477,7 @@ export default function DashboardPage() {
               tone="info"
             />
             <StatCard
-              title="Open Tasks"
+              title="Open tasks"
               value={numberFmt(stats.openTasks)}
               hint={`${numberFmt(stats.completedTasks)} completed · ${numberFmt(
                 stats.overdueTasks
@@ -485,7 +485,7 @@ export default function DashboardPage() {
               tone={stats.overdueTasks > 0 ? "warning" : "success"}
             />
             <StatCard
-              title="Active OKRs / KPIs"
+              title="Active OKRs and KPIs"
               value={`${numberFmt(stats.activeOkrs)} / ${numberFmt(stats.activeKpis)}`}
               hint={`Task completion ${numberFmt(stats.taskCompletionRate)}%`}
               tone="default"
@@ -494,7 +494,7 @@ export default function DashboardPage() {
 
           <div className="mt-6 grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
             <SectionCard
-              title="Executive Summary"
+              title="Executive summary"
               subtitle={
                 visibility
                   ? `View scope: ${visibility} · Role: ${role ?? "member"}`
@@ -527,18 +527,18 @@ export default function DashboardPage() {
                   <SummaryStrip label="Cycle" value={cycleLabel(cycle)} />
                   <SummaryStrip label="Departments" value={numberFmt(departments.length)} />
                   <SummaryStrip
-                    label="Task completion"
+                    label="Tasks completed"
                     value={`${numberFmt(stats.taskCompletionRate)}%`}
                   />
-                  <SummaryStrip label="At-risk KPIs" value={numberFmt(stats.atRiskKpis)} />
+                  <SummaryStrip label="KPIs at risk" value={numberFmt(stats.atRiskKpis)} />
                   <SummaryStrip label="Blocked tasks" value={numberFmt(stats.blockedTasks)} />
                 </div>
               </div>
             </SectionCard>
 
             <SectionCard
-              title="Mach3 Analysis"
-              subtitle="Latest executive intelligence output"
+              title="Mach3 analysis"
+              subtitle="Your latest AI-generated performance report"
               className="bg-[linear-gradient(180deg,rgba(109,94,252,0.08),rgba(55,207,255,0.03))]"
               actions={
                 <Link
@@ -569,41 +569,41 @@ export default function DashboardPage() {
 
                   <div className="mt-5 grid gap-3">
                     <ActionChip
-                      label="Diagnose underperformance"
+                      label="Find what's underperforming"
                       href={`/o/${orgSlug}/your-ai`}
                     />
                     <ActionChip
-                      label="Generate OKRs from weak KPIs"
+                      label="Turn weak KPIs into OKRs"
                       href={`/o/${orgSlug}/your-ai`}
                     />
                     <ActionChip
-                      label="Create execution tasks"
+                      label="Break OKRs into daily tasks"
                       href={`/o/${orgSlug}/tasks`}
                     />
                   </div>
                 </div>
               ) : (
                 <EmptyState
-                  title="No Mach3 report found"
-                  description="Once the AI analysis layer writes to ai_reports, the latest executive summary will appear here."
+                  title="No report yet"
+                  description="Run a company analysis to generate your first Mach3 report. It summarizes what's working, what's slipping, and what to do next."
                 />
               )}
             </SectionCard>
           </div>
 
           <div className="mt-6 grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-            <SectionCard title="Department Performance" subtitle="Who is leading and who is slipping">
+            <SectionCard title="Department performance" subtitle="Who's ahead and who needs help">
               {departments.length ? (
                 <div className="grid gap-5">
                   <div className="grid gap-4 lg:grid-cols-2">
                     <DepartmentBucket
-                      title="Strongest departments"
-                      subtitle="Top current performers"
+                      title="Leading the quarter"
+                      subtitle="Departments scoring highest right now"
                       rows={strongestDepartments}
                     />
                     <DepartmentBucket
                       title="Needs attention"
-                      subtitle="Lowest current performers"
+                      subtitle="Departments scoring lowest right now"
                       rows={weakestDepartments}
                     />
                   </div>
@@ -651,13 +651,13 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 <EmptyState
-                  title="No departments found"
-                  description="Create departments and connect work to them so the department leaderboard can render."
+                  title="No departments yet"
+                  description="Set up your departments in Settings. The leaderboard shows up once each department has KPIs or OKRs linked to it."
                 />
               )}
             </SectionCard>
 
-            <SectionCard title="Critical Alerts" subtitle="The most urgent weak points right now">
+            <SectionCard title="Needs your attention" subtitle="The most urgent things to fix this week">
               <div className="grid gap-3">
                 <AlertRow
                   title="Overdue tasks"
@@ -666,19 +666,19 @@ export default function DashboardPage() {
                   desc="Tasks that should already be completed."
                 />
                 <AlertRow
-                  title="Blocked execution"
+                  title="Blocked tasks"
                   value={numberFmt(stats.blockedTasks)}
                   tone={stats.blockedTasks > 0 ? "warning" : "success"}
                   desc="Tasks marked as blocked by teams."
                 />
                 <AlertRow
-                  title="At-risk KPIs"
+                  title="KPIs falling behind"
                   value={numberFmt(stats.atRiskKpis)}
                   tone={stats.atRiskKpis > 0 ? "warning" : "success"}
                   desc="KPIs scoring below the healthy threshold."
                 />
                 <AlertRow
-                  title="Cycle status"
+                  title="Cycle progress"
                   value={cycle ? cycle.status : "none"}
                   tone={cycle ? "info" : "danger"}
                   desc="The active reporting and planning period."
@@ -689,8 +689,8 @@ export default function DashboardPage() {
 
           <div className="mt-6 grid gap-6 xl:grid-cols-[1.05fr_1.2fr]">
             <SectionCard
-              title="Priority KPIs"
-              subtitle="Lowest-scoring KPIs surfaced first"
+              title="KPIs to watch"
+              subtitle="The KPIs slipping furthest from target"
             >
               {topRiskKpis.length ? (
                 <div className="grid gap-4">
@@ -755,15 +755,15 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 <EmptyState
-                  title="No KPIs found"
-                  description="Create KPIs for the active cycle to populate the performance section."
+                  title="No KPIs yet"
+                  description="Add KPIs for this cycle to start tracking performance. Each KPI gets a score based on current value vs target."
                 />
               )}
             </SectionCard>
 
             <SectionCard
-              title="Execution Pulse"
-              subtitle="Open work that still needs attention"
+              title="Work in motion"
+              subtitle="Tasks that still need to get done"
             >
               {executionPulse.length ? (
                 <div className="grid gap-3">
@@ -798,8 +798,8 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 <EmptyState
-                  title="No active tasks found"
-                  description="As soon as teams create or generate tasks from JTBD clusters, this panel will show execution pressure."
+                  title="No tasks yet"
+                  description="Generate tasks from your OKRs in AI Setup, or add them manually. This panel shows everything still in progress."
                 />
               )}
             </SectionCard>
@@ -807,8 +807,8 @@ export default function DashboardPage() {
 
           <div className="mt-6 grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
             <SectionCard
-              title="Objectives Overview"
-              subtitle="Strategic objectives currently under the most pressure"
+              title="Objectives in focus"
+              subtitle="The objectives with the most ground to cover"
             >
               {topObjectives.length ? (
                 <div className="grid gap-3">
@@ -846,15 +846,15 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 <EmptyState
-                  title="No objectives found"
-                  description="Create company or department objectives first to make the strategy layer visible."
+                  title="No objectives yet"
+                  description="Set your first objectives in AI Setup. Each one groups a set of OKRs that ladder up to your strategy."
                 />
               )}
             </SectionCard>
 
             <SectionCard
-              title="Fast Actions"
-              subtitle="Move directly into the next useful workflow"
+              title="Jump into the work"
+              subtitle="One click into whatever's next"
               className="bg-[linear-gradient(180deg,rgba(109,94,252,0.08),rgba(55,207,255,0.03))]"
             >
               <div className="grid gap-3">
@@ -870,12 +870,12 @@ export default function DashboardPage() {
                 />
                 <QuickLinkCard
                   href={`/o/${orgSlug}/kpis`}
-                  title="Update KPI inputs"
+                  title="Update KPI values"
                   desc="Refresh the underlying signals driving the dashboard."
                 />
                 <QuickLinkCard
                   href={`/o/${orgSlug}/tasks`}
-                  title="Resolve execution blockers"
+                  title="Resolve blocked tasks"
                   desc="Review blocked, overdue, and high-priority tasks."
                 />
               </div>

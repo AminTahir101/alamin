@@ -314,13 +314,13 @@ export default function AuthPage() {
         <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,rgba(99,102,241,0.22),transparent_32%),radial-gradient(circle_at_top_right,rgba(34,211,238,0.12),transparent_24%)]" />
         <div className="mx-auto flex min-h-screen max-w-7xl items-center justify-center px-6">
           <div className="w-full max-w-xl rounded-[32px] border border-[var(--border-strong)] bg-[var(--background-panel)] p-6 alamin-glow">
-            <div className="h-5 w-32 animate-pulse rounded-full bg-white/10" />
-            <div className="mt-5 h-12 w-64 animate-pulse rounded-2xl bg-white/10" />
-            <div className="mt-3 h-5 w-80 animate-pulse rounded-xl bg-white/10" />
+            <div className="h-5 w-32 animate-pulse rounded-full bg-[var(--border)]" />
+            <div className="mt-5 h-12 w-64 animate-pulse rounded-2xl bg-[var(--border)]" />
+            <div className="mt-3 h-5 w-80 animate-pulse rounded-xl bg-[var(--border)]" />
             <div className="mt-8 grid gap-4">
-              <div className="h-14 animate-pulse rounded-2xl bg-white/10" />
-              <div className="h-14 animate-pulse rounded-2xl bg-white/10" />
-              <div className="h-14 animate-pulse rounded-2xl bg-white/10" />
+              <div className="h-14 animate-pulse rounded-2xl bg-[var(--border)]" />
+              <div className="h-14 animate-pulse rounded-2xl bg-[var(--border)]" />
+              <div className="h-14 animate-pulse rounded-2xl bg-[var(--border)]" />
             </div>
           </div>
         </div>

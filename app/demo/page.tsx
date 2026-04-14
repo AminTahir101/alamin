@@ -62,22 +62,22 @@ export default function DemoPage() {
     setSuccess(null);
 
     if (!form.fullName.trim()) {
-      setMsg("Full name is required.");
+      setMsg("We need your full name.");
       return;
     }
 
     if (!form.workEmail.trim()) {
-      setMsg("Work email is required.");
+      setMsg("Work email is required to qualify your request.");
       return;
     }
 
     if (!form.companyName.trim()) {
-      setMsg("Company name is required.");
+      setMsg("Which company are we talking about?");
       return;
     }
 
     if (!form.jobTitle.trim()) {
-      setMsg("Job title is required.");
+      setMsg("What's your role?");
       return;
     }
 
@@ -96,12 +96,14 @@ export default function DemoPage() {
       const parsed = (await safeParseJson(raw)) as DemoResponse | null;
 
       if (!res.ok || !parsed?.ok) {
-        throw new Error(parsed?.error || raw || "Failed to submit demo request");
+        throw new Error(
+          parsed?.error || raw || "Couldn't send your request. Try again in a moment.",
+        );
       }
 
       setSuccess(
         parsed.message ||
-          "Your demo request was submitted. The team will reach out to you soon.",
+          "Thanks. We'll review your request and reach out within 1 business day.",
       );
 
       setForm({
@@ -114,7 +116,9 @@ export default function DemoPage() {
         notes: "",
       });
     } catch (err: unknown) {
-      setMsg(getErrorMessage(err, "Failed to submit demo request"));
+      setMsg(
+        getErrorMessage(err, "Couldn't send your request. Try again in a moment."),
+      );
     } finally {
       setLoading(false);
     }
@@ -145,13 +149,13 @@ export default function DemoPage() {
               href="/"
               className="inline-flex h-11 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-5 text-sm font-medium text-[var(--foreground-soft)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
             >
-              Back to site
+              Back to home
             </Link>
             <Link
               href="/auth"
               className="inline-flex h-11 items-center justify-center rounded-full bg-[var(--foreground)] px-5 text-sm font-semibold text-[var(--background)] transition hover:opacity-92"
             >
-              Existing customer login
+              Sign in
             </Link>
           </div>
         </div>
@@ -161,40 +165,41 @@ export default function DemoPage() {
         <section className="flex flex-col justify-center">
           <div className="inline-flex w-fit items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-xs font-medium text-[var(--foreground-muted)]">
             <span className="h-2 w-2 rounded-full bg-[var(--accent-2)]" />
-            Demo-first onboarding for qualified companies
+            By invitation. Built for serious companies.
           </div>
 
           <h1 className="mt-6 text-5xl font-semibold leading-[1.02] tracking-tight text-[var(--foreground)] md:text-6xl">
-            Request a demo for
+            Your strategy needs
             <span className="block bg-[linear-gradient(135deg,var(--foreground)_0%,#9b8cff_38%,#64dcff_100%)] bg-clip-text text-transparent">
-              ALAMIN.
+              an execution system.
             </span>
           </h1>
 
           <p className="mt-6 max-w-2xl text-lg leading-8 text-[var(--foreground-muted)]">
-            Show us your company context and we will walk you through how ALAMIN
-            can structure KPI inputs, generate OKRs, map JTBD, and give your
-            leadership team a real execution layer.
+            ALAMIN is the AI execution system that turns your company strategy
+            into measurable KPIs, aligned OKRs, clear jobs, and real daily
+            tasks. Not another dashboard. A system that turns your plan into
+            daily work.
           </p>
 
           <div className="mt-10 grid gap-4 sm:grid-cols-3">
-            <MetricCard value="Paid" label="plans only" />
-            <MetricCard value="AI" label="execution intelligence" />
-            <MetricCard value="B2B" label="serious company rollout" />
+            <MetricCard value="Strategy" label="becomes execution" />
+            <MetricCard value="KPIs" label="become OKRs" />
+            <MetricCard value="OKRs" label="become daily work" />
           </div>
 
           <div className="mt-10 grid gap-4">
             <InfoCard
               title="What happens next"
-              desc="Your request is reviewed, qualified, and routed to sales instead of opening the product publicly to everyone."
+              desc="We review your request, understand your company setup, and walk you through a live session tailored to how your team actually works."
             />
             <InfoCard
               title="Who this is for"
-              desc="Companies that want KPI-to-OKR generation, execution tracking, department ownership, and AI performance review in one product."
+              desc="Companies that have a strategy but struggle to turn it into daily execution. Teams that outgrew spreadsheets and dashboards. Leaders who want one system for the whole cascade."
             />
             <InfoCard
-              title="Why no free plan"
-              desc="This is not a toy signup funnel. The product is positioned for paid B2B adoption and controlled rollout."
+              title="Why invite-only"
+              desc="ALAMIN is an operating layer, not a productivity app. We onboard companies one at a time so the AI has enough context to run real performance intelligence from day one."
             />
           </div>
         </section>
@@ -204,14 +209,14 @@ export default function DemoPage() {
           <div className="relative overflow-hidden rounded-[32px] border border-[var(--border-strong)] bg-[var(--background-panel)] p-5 alamin-glow md:p-6">
             <div className="rounded-[26px] border border-[var(--border)] bg-[var(--background-elevated)] p-5 md:p-6">
               <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
-                Demo request
+                Start here
               </div>
               <h2 className="mt-3 text-3xl font-semibold tracking-tight text-[var(--foreground)]">
-                Tell us about your company
+                Let&apos;s talk about your company
               </h2>
               <p className="mt-3 text-sm leading-7 text-[var(--foreground-muted)]">
-                Use a real work email and enough context so the demo is not a
-                waste of time.
+                A few details so the demo is worth your time and ours. Real
+                work email, please.
               </p>
 
               {(msg || success) && (
@@ -236,7 +241,7 @@ export default function DemoPage() {
                     <input
                       value={form.fullName}
                       onChange={(e) => updateField("fullName", e.target.value)}
-                      placeholder="Your full name"
+                      placeholder="e.g. Sarah Ahmed"
                       className="h-12 w-full rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none placeholder:text-[var(--foreground-faint)] transition focus:border-[var(--border-strong)]"
                     />
                   </Field>
@@ -264,7 +269,7 @@ export default function DemoPage() {
                     <input
                       value={form.jobTitle}
                       onChange={(e) => updateField("jobTitle", e.target.value)}
-                      placeholder="Head of Strategy"
+                      placeholder="e.g. COO, Head of Strategy"
                       className="h-12 w-full rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none placeholder:text-[var(--foreground-faint)] transition focus:border-[var(--border-strong)]"
                     />
                   </Field>
@@ -295,13 +300,13 @@ export default function DemoPage() {
                 </div>
 
                 <Field
-                  label="What do you want to solve?"
-                  hint="Share KPI pain, execution pain, or reporting pain"
+                  label="What are you trying to solve?"
+                  hint="Strategy, KPIs, OKRs, execution, reporting, anything that hurts"
                 >
                   <textarea
                     value={form.notes}
                     onChange={(e) => updateField("notes", e.target.value)}
-                    placeholder="Example: We track KPIs manually in spreadsheets, struggle to convert company strategy into measurable OKRs, and leadership has no clean execution view across departments."
+                    placeholder="Example: We set yearly OKRs but nobody touches them by Q2. Departments run on separate spreadsheets. The CEO can't see what's actually working."
                     className="min-h-30 w-full rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 py-3 text-[var(--foreground)] outline-none placeholder:text-[var(--foreground-faint)] transition focus:border-[var(--border-strong)]"
                   />
                 </Field>
@@ -311,17 +316,18 @@ export default function DemoPage() {
                   disabled={loading}
                   className="mt-2 inline-flex h-12 items-center justify-center rounded-full bg-[var(--foreground)] px-5 text-sm font-semibold text-[var(--background)] transition hover:opacity-92 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {loading ? "Submitting..." : "Request demo"}
+                  {loading ? "Sending..." : "Request a demo"}
                 </button>
               </form>
 
               <div className="mt-6 rounded-[20px] border border-[var(--border)] bg-[var(--card-subtle)] p-4">
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
-                  Entry policy
+                  How we work
                 </div>
                 <div className="mt-3 text-sm leading-7 text-[var(--foreground-muted)]">
-                  No free plan. No open public product access. New companies come
-                  in through demo qualification and paid onboarding only.
+                  No free tier. No public signup. We onboard each company with
+                  context, care, and a real rollout plan. The product earns a
+                  place in how you run your company.
                 </div>
               </div>
             </div>
