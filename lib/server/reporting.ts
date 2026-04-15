@@ -1033,99 +1033,351 @@ export function reportEmailHtml(args: {
   const departments = Array.isArray(args.payload.departments)
     ? (args.payload.departments as Record<string, unknown>[]).slice(0, 8)
     : [];
-
-  const immediate = Array.isArray((args.payload.recommendations as Record<string, unknown> | undefined)?.immediate)
-    ? ((args.payload.recommendations as Record<string, unknown>).immediate as unknown[]).map((item) => String(item))
+  const kpis = Array.isArray(args.payload.kpis)
+    ? (args.payload.kpis as Record<string, unknown>[])
+    : [];
+  const objectives = Array.isArray(args.payload.objectives)
+    ? (args.payload.objectives as Record<string, unknown>[])
+    : [];
+  const recommendations = (args.payload.recommendations ?? {}) as Record<string, unknown>;
+  const immediate = Array.isArray(recommendations.immediate)
+    ? (recommendations.immediate as unknown[]).map((item) => String(item))
+    : [];
+  const thirtyDay = Array.isArray(recommendations.thirty_day)
+    ? (recommendations.thirty_day as unknown[]).map((item) => String(item))
+    : [];
+  const ninetyDay = Array.isArray(recommendations.ninety_day)
+    ? (recommendations.ninety_day as unknown[]).map((item) => String(item))
     : [];
 
-  const departmentHtml = departments
-    .map((row) => {
+  // Helpers
+  const n = (v: unknown) => {
+    const x = Number(v ?? 0);
+    return Number.isFinite(x) ? Math.round(x) : 0;
+  };
+  const bandColor = (score: number) => {
+    if (score < 45) return "#ef4444";
+    if (score < 70) return "#f59e0b";
+    if (score < 85) return "#10b981";
+    return "#14b8a6";
+  };
+  const bandBg = (score: number) => {
+    if (score < 45) return "#fef2f2";
+    if (score < 70) return "#fffbeb";
+    if (score < 85) return "#ecfdf5";
+    return "#f0fdfa";
+  };
+
+  const enterpriseScore = n(summary.score);
+  const scoreColor = bandColor(enterpriseScore);
+
+  // Score card helper
+  const scoreCard = (label: string, value: number, suffix = "/100") =>
+    `<td style="width:25%;padding:0 6px;">
+      <div style="background:#f8fafc;border-radius:14px;padding:14px 16px;text-align:center;">
+        <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#64748b;">${htmlEscape(label)}</div>
+        <div style="margin-top:6px;font-size:28px;font-weight:800;color:${bandColor(value)};">${value}<span style="font-size:14px;font-weight:600;opacity:.5;">${suffix}</span></div>
+      </div>
+    </td>`;
+
+  // Progress bar helper (email-safe using a table with colored background)
+  const progressBar = (score: number, maxWidth = 100) => {
+    const pct = Math.max(0, Math.min(100, score));
+    const color = bandColor(score);
+    return `<table cellpadding="0" cellspacing="0" style="width:${maxWidth}%;border-collapse:collapse;">
+      <tr>
+        <td style="width:${pct}%;height:8px;background:${color};border-radius:4px 0 0 4px;">&nbsp;</td>
+        <td style="width:${100 - pct}%;height:8px;background:#e2e8f0;border-radius:0 4px 4px 0;">&nbsp;</td>
+      </tr>
+    </table>`;
+  };
+
+  // Department rows with visual progress bars
+  const departmentRows = departments
+    .sort((a, b) => n(b.score) - n(a.score))
+    .map((dept) => {
+      const score = n(dept.score);
+      const color = bandColor(score);
       return `<tr>
-        <td style="padding:10px 12px;border-bottom:1px solid #ececf3;">${htmlEscape(row.name)}</td>
-        <td style="padding:10px 12px;border-bottom:1px solid #ececf3;">${htmlEscape(row.score)}</td>
-        <td style="padding:10px 12px;border-bottom:1px solid #ececf3;">${htmlEscape(row.label)}</td>
-        <td style="padding:10px 12px;border-bottom:1px solid #ececf3;">${htmlEscape(row.risk_level)}</td>
-        <td style="padding:10px 12px;border-bottom:1px solid #ececf3;">${htmlEscape(row.overdue_tasks)}</td>
+        <td style="padding:14px 16px;border-bottom:1px solid #f1f5f9;">
+          <div style="font-weight:700;color:#0f172a;font-size:14px;">${htmlEscape(dept.name)}</div>
+          <div style="margin-top:6px;">${progressBar(score)}</div>
+        </td>
+        <td style="padding:14px 12px;border-bottom:1px solid #f1f5f9;text-align:center;">
+          <div style="font-size:22px;font-weight:800;color:${color};">${score}</div>
+        </td>
+        <td style="padding:14px 12px;border-bottom:1px solid #f1f5f9;text-align:center;">
+          <span style="display:inline-block;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;background:${bandBg(score)};color:${color};">${htmlEscape(dept.label)}</span>
+        </td>
+        <td style="padding:14px 12px;border-bottom:1px solid #f1f5f9;text-align:center;font-size:13px;color:#64748b;">
+          ${htmlEscape(dept.risk_level)}
+        </td>
+        <td style="padding:14px 12px;border-bottom:1px solid #f1f5f9;text-align:center;font-size:13px;font-weight:700;color:${n(dept.overdue_tasks) > 0 ? "#ef4444" : "#64748b"};">
+          ${htmlEscape(dept.overdue_tasks)}
+        </td>
       </tr>`;
     })
     .join("");
 
-  const immediateHtml = immediate.length
-    ? `<ul style="margin:10px 0 0;padding-left:18px;color:#374151;">${immediate
-        .map((item) => `<li style="margin:0 0 8px;">${htmlEscape(item)}</li>`)
-        .join("")}</ul>`
-    : `<div style="margin-top:10px;color:#6b7280;">No immediate actions generated.</div>`;
+  // KPIs at risk (top 5 lowest-scoring)
+  const kpisAtRisk = [...kpis]
+    .sort((a, b) => n(a.score) - n(b.score))
+    .slice(0, 5);
+  const kpiRows = kpisAtRisk
+    .map((kpi) => {
+      const score = n(kpi.score);
+      const color = bandColor(score);
+      const current = kpi.current_value !== null && kpi.current_value !== undefined ? String(kpi.current_value) : "—";
+      const target = kpi.target_value !== null && kpi.target_value !== undefined ? String(kpi.target_value) : "—";
+      return `<tr>
+        <td style="padding:12px 16px;border-bottom:1px solid #f1f5f9;">
+          <div style="font-weight:600;color:#0f172a;font-size:13px;">${htmlEscape(kpi.title)}</div>
+          ${kpi.department_name ? `<div style="margin-top:2px;font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#94a3b8;">${htmlEscape(kpi.department_name)}</div>` : ""}
+        </td>
+        <td style="padding:12px;border-bottom:1px solid #f1f5f9;text-align:center;font-size:13px;color:#374151;">${htmlEscape(current)}</td>
+        <td style="padding:12px;border-bottom:1px solid #f1f5f9;text-align:center;font-size:13px;color:#374151;">${htmlEscape(target)}</td>
+        <td style="padding:12px;border-bottom:1px solid #f1f5f9;text-align:center;">
+          <span style="font-size:18px;font-weight:800;color:${color};">${score}</span>
+        </td>
+      </tr>`;
+    })
+    .join("");
+
+  // Objectives progress (top 6)
+  const topObjectives = [...objectives]
+    .sort((a, b) => n(a.health_score) - n(b.health_score))
+    .slice(0, 6);
+  const objectiveRows = topObjectives
+    .map((obj) => {
+      const progress = n(obj.progress);
+      const health = n(obj.health_score);
+      const color = bandColor(health);
+      return `<tr>
+        <td style="padding:10px 16px;border-bottom:1px solid #f1f5f9;">
+          <div style="font-weight:600;color:#0f172a;font-size:13px;">${htmlEscape(obj.title)}</div>
+          ${obj.department_name ? `<div style="margin-top:2px;font-size:11px;color:#94a3b8;">${htmlEscape(obj.department_name)}</div>` : ""}
+        </td>
+        <td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;width:120px;">
+          ${progressBar(progress, 100)}
+        </td>
+        <td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;text-align:center;font-size:14px;font-weight:700;color:${color};">${progress}%</td>
+      </tr>`;
+    })
+    .join("");
+
+  // Recommendation list helper
+  const recList = (items: string[]) =>
+    items.length
+      ? `<table cellpadding="0" cellspacing="0" style="width:100%;">${items
+          .map(
+            (item, i) =>
+              `<tr>
+            <td style="width:28px;vertical-align:top;padding:6px 0;">
+              <div style="width:22px;height:22px;border-radius:50%;background:#0f172a;color:#fff;font-size:11px;font-weight:800;text-align:center;line-height:22px;">${i + 1}</div>
+            </td>
+            <td style="padding:6px 0 6px 8px;font-size:13px;line-height:1.7;color:#374151;">${htmlEscape(item)}</td>
+          </tr>`,
+          )
+          .join("")}</table>`
+      : `<div style="padding:8px 0;color:#94a3b8;font-size:13px;">None for this period.</div>`;
+
+  // Task summary stats
+  const completedTasks = n(summary.completed_tasks);
+  const openTasks = n(summary.open_tasks);
+  const overdueTasks = n(summary.overdue_tasks);
+  const taskCompletionRate = n(summary.task_completion_rate);
 
   return `
-    <div style="font-family:Inter,Arial,sans-serif;background:#f5f7fb;padding:24px;">
-      <div style="max-width:920px;margin:0 auto;background:#ffffff;border-radius:24px;border:1px solid #e8eaf2;overflow:hidden;">
-        <div style="padding:28px 30px;background:#0f172a;color:#ffffff;">
-          <div style="font-size:12px;letter-spacing:0.18em;text-transform:uppercase;opacity:.72;">ALAMIN Enterprise Report</div>
-          <h1 style="margin:10px 0 0;font-size:30px;line-height:1.08;">${htmlEscape(args.title)}</h1>
-          <p style="margin:10px 0 0;font-size:15px;line-height:1.7;opacity:.86;">Period: ${htmlEscape(args.periodLabel)}</p>
+    <div style="font-family:'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#f0f2f7;padding:28px 16px;">
+      <div style="max-width:720px;margin:0 auto;">
+
+        <!-- HEADER -->
+        <div style="background:#0f172a;color:#ffffff;border-radius:20px 20px 0 0;padding:32px 36px;">
+          <div style="font-size:11px;font-weight:700;letter-spacing:0.2em;text-transform:uppercase;color:rgba(255,255,255,0.6);">ALAMIN Enterprise Report</div>
+          <h1 style="margin:12px 0 0;font-size:28px;font-weight:800;line-height:1.2;">${htmlEscape(args.title)}</h1>
+          <p style="margin:8px 0 0;font-size:14px;line-height:1.6;color:rgba(255,255,255,0.7);">Period: ${htmlEscape(args.periodLabel)}</p>
         </div>
 
-        <div style="padding:28px 30px;">
-          <div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;">
-            <div style="background:#111827;color:#fff;border-radius:18px;padding:16px;">
-              <div style="font-size:12px;opacity:.72;">Enterprise score</div>
-              <div style="margin-top:8px;font-size:28px;font-weight:800;">${htmlEscape(summary.score)}</div>
-              <div style="margin-top:6px;font-size:12px;opacity:.8;">${htmlEscape(summary.evaluation_band)}</div>
-            </div>
-            <div style="background:#f8fafc;border-radius:18px;padding:16px;">
-              <div style="font-size:12px;color:#64748b;">Strategic execution</div>
-              <div style="margin-top:8px;font-size:26px;font-weight:800;color:#0f172a;">${htmlEscape(summary.strategic_execution_score)}</div>
-            </div>
-            <div style="background:#f8fafc;border-radius:18px;padding:16px;">
-              <div style="font-size:12px;color:#64748b;">KPI health</div>
-              <div style="margin-top:8px;font-size:26px;font-weight:800;color:#0f172a;">${htmlEscape(summary.kpi_health_score)}</div>
-            </div>
-            <div style="background:#f8fafc;border-radius:18px;padding:16px;">
-              <div style="font-size:12px;color:#64748b;">Task execution</div>
-              <div style="margin-top:8px;font-size:26px;font-weight:800;color:#0f172a;">${htmlEscape(summary.task_execution_score)}</div>
-            </div>
-            <div style="background:#f8fafc;border-radius:18px;padding:16px;">
-              <div style="font-size:12px;color:#64748b;">Overdue tasks</div>
-              <div style="margin-top:8px;font-size:26px;font-weight:800;color:#0f172a;">${htmlEscape(summary.overdue_tasks)}</div>
+        <div style="background:#ffffff;border-radius:0 0 20px 20px;border:1px solid #e2e8f0;border-top:none;">
+
+          <!-- ENTERPRISE SCORE — big hero card -->
+          <div style="padding:32px 36px;text-align:center;border-bottom:1px solid #f1f5f9;">
+            <div style="font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:#94a3b8;">Enterprise Score</div>
+            <div style="margin-top:12px;font-size:64px;font-weight:900;letter-spacing:-0.04em;color:${scoreColor};">${enterpriseScore}</div>
+            <div style="margin-top:4px;font-size:13px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:${scoreColor};">${htmlEscape(summary.evaluation_band)}</div>
+            <div style="margin-top:16px;width:80%;margin-left:10%;margin-right:10%;">
+              ${progressBar(enterpriseScore)}
             </div>
           </div>
 
-          <div style="margin-top:28px;display:grid;grid-template-columns:1fr 1fr;gap:18px;">
-            <div style="border:1px solid #ececf3;border-radius:18px;padding:18px;">
-              <div style="font-size:13px;font-weight:700;color:#0f172a;">Board View</div>
-              <div style="margin-top:10px;color:#374151;font-size:14px;line-height:1.75;">${htmlEscape(board.narrative)}</div>
-            </div>
-            <div style="border:1px solid #ececf3;border-radius:18px;padding:18px;">
-              <div style="font-size:13px;font-weight:700;color:#0f172a;">CEO View</div>
-              <div style="margin-top:10px;color:#374151;font-size:14px;line-height:1.75;">${htmlEscape(ceo.narrative)}</div>
-            </div>
-          </div>
-
-          <div style="margin-top:28px;">
-            <div style="font-size:18px;font-weight:800;color:#0f172a;">Department Performance Ranking</div>
-            <table style="width:100%;margin-top:12px;border-collapse:collapse;border:1px solid #ececf3;border-radius:16px;overflow:hidden;">
-              <thead>
-                <tr style="background:#f8fafc;text-align:left;">
-                  <th style="padding:12px;border-bottom:1px solid #ececf3;">Department</th>
-                  <th style="padding:12px;border-bottom:1px solid #ececf3;">Score</th>
-                  <th style="padding:12px;border-bottom:1px solid #ececf3;">Label</th>
-                  <th style="padding:12px;border-bottom:1px solid #ececf3;">Risk</th>
-                  <th style="padding:12px;border-bottom:1px solid #ececf3;">Overdue Tasks</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${
-                  departmentHtml ||
-                  `<tr><td colspan="5" style="padding:12px;color:#6b7280;">No department data available.</td></tr>`
-                }
-              </tbody>
+          <!-- SCORE CARDS ROW -->
+          <div style="padding:24px 30px;border-bottom:1px solid #f1f5f9;">
+            <table cellpadding="0" cellspacing="0" style="width:100%;">
+              <tr>
+                ${scoreCard("Strategic Execution", n(summary.strategic_execution_score))}
+                ${scoreCard("KPI Health", n(summary.kpi_health_score))}
+                ${scoreCard("Task Execution", n(summary.task_execution_score))}
+                ${scoreCard("Overdue", n(summary.overdue_tasks), "")}
+              </tr>
             </table>
           </div>
 
-          <div style="margin-top:28px;border:1px solid #ececf3;border-radius:18px;padding:18px;">
-            <div style="font-size:16px;font-weight:800;color:#0f172a;">Immediate Executive Actions</div>
-            ${immediateHtml}
+          <!-- TASK COMPLETION SUMMARY -->
+          <div style="padding:24px 36px;border-bottom:1px solid #f1f5f9;">
+            <div style="font-size:16px;font-weight:800;color:#0f172a;">Task execution</div>
+            <table cellpadding="0" cellspacing="0" style="width:100%;margin-top:14px;">
+              <tr>
+                <td style="width:25%;text-align:center;padding:12px 8px;background:#f0fdf4;border-radius:12px;">
+                  <div style="font-size:24px;font-weight:800;color:#16a34a;">${completedTasks}</div>
+                  <div style="margin-top:4px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#16a34a;">Completed</div>
+                </td>
+                <td style="width:8px;"></td>
+                <td style="width:25%;text-align:center;padding:12px 8px;background:#eff6ff;border-radius:12px;">
+                  <div style="font-size:24px;font-weight:800;color:#2563eb;">${Math.max(0, openTasks - overdueTasks)}</div>
+                  <div style="margin-top:4px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#2563eb;">Open</div>
+                </td>
+                <td style="width:8px;"></td>
+                <td style="width:25%;text-align:center;padding:12px 8px;background:${overdueTasks > 0 ? "#fef2f2" : "#f8fafc"};border-radius:12px;">
+                  <div style="font-size:24px;font-weight:800;color:${overdueTasks > 0 ? "#ef4444" : "#64748b"};">${overdueTasks}</div>
+                  <div style="margin-top:4px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:${overdueTasks > 0 ? "#ef4444" : "#64748b"};">Overdue</div>
+                </td>
+                <td style="width:8px;"></td>
+                <td style="width:25%;text-align:center;padding:12px 8px;background:#f8fafc;border-radius:12px;">
+                  <div style="font-size:24px;font-weight:800;color:#0f172a;">${taskCompletionRate}%</div>
+                  <div style="margin-top:4px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#64748b;">Completion</div>
+                </td>
+              </tr>
+            </table>
           </div>
+
+          <!-- EXECUTIVE NARRATIVES -->
+          <div style="padding:24px 36px;border-bottom:1px solid #f1f5f9;">
+            <table cellpadding="0" cellspacing="0" style="width:100%;">
+              <tr>
+                <td style="width:49%;vertical-align:top;">
+                  <div style="border:1px solid #e2e8f0;border-radius:16px;padding:20px;">
+                    <div style="font-size:14px;font-weight:800;color:#0f172a;">What the board sees</div>
+                    <div style="margin-top:4px;font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#94a3b8;">Board view</div>
+                    <div style="margin-top:12px;color:#374151;font-size:13px;line-height:1.8;">${htmlEscape(board.narrative)}</div>
+                  </div>
+                </td>
+                <td style="width:2%;"></td>
+                <td style="width:49%;vertical-align:top;">
+                  <div style="border:1px solid #e2e8f0;border-radius:16px;padding:20px;">
+                    <div style="font-size:14px;font-weight:800;color:#0f172a;">Where the CEO focuses</div>
+                    <div style="margin-top:4px;font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#94a3b8;">CEO view</div>
+                    <div style="margin-top:12px;color:#374151;font-size:13px;line-height:1.8;">${htmlEscape(ceo.narrative)}</div>
+                  </div>
+                </td>
+              </tr>
+            </table>
+          </div>
+
+          <!-- DEPARTMENT PERFORMANCE -->
+          <div style="padding:24px 36px;border-bottom:1px solid #f1f5f9;">
+            <div style="font-size:16px;font-weight:800;color:#0f172a;">Department performance</div>
+            <div style="margin-top:4px;font-size:12px;color:#94a3b8;">Ranked by overall score</div>
+            ${
+              departmentRows
+                ? `<table cellpadding="0" cellspacing="0" style="width:100%;margin-top:16px;border-collapse:collapse;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;">
+                <thead>
+                  <tr style="background:#f8fafc;">
+                    <th style="padding:12px 16px;text-align:left;font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#64748b;border-bottom:1px solid #e2e8f0;">Department</th>
+                    <th style="padding:12px;text-align:center;font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#64748b;border-bottom:1px solid #e2e8f0;">Score</th>
+                    <th style="padding:12px;text-align:center;font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#64748b;border-bottom:1px solid #e2e8f0;">Status</th>
+                    <th style="padding:12px;text-align:center;font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#64748b;border-bottom:1px solid #e2e8f0;">Risk</th>
+                    <th style="padding:12px;text-align:center;font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#64748b;border-bottom:1px solid #e2e8f0;">Overdue</th>
+                  </tr>
+                </thead>
+                <tbody>${departmentRows}</tbody>
+              </table>`
+                : `<div style="margin-top:16px;padding:20px;background:#f8fafc;border-radius:14px;text-align:center;color:#94a3b8;font-size:13px;">No department data for this period.</div>`
+            }
+          </div>
+
+          ${
+            kpiRows
+              ? `<!-- KPIS AT RISK -->
+          <div style="padding:24px 36px;border-bottom:1px solid #f1f5f9;">
+            <div style="font-size:16px;font-weight:800;color:#0f172a;">KPIs at risk</div>
+            <div style="margin-top:4px;font-size:12px;color:#94a3b8;">Lowest-scoring metrics that need attention</div>
+            <table cellpadding="0" cellspacing="0" style="width:100%;margin-top:16px;border-collapse:collapse;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;">
+              <thead>
+                <tr style="background:#f8fafc;">
+                  <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#64748b;border-bottom:1px solid #e2e8f0;">KPI</th>
+                  <th style="padding:10px 12px;text-align:center;font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#64748b;border-bottom:1px solid #e2e8f0;">Current</th>
+                  <th style="padding:10px 12px;text-align:center;font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#64748b;border-bottom:1px solid #e2e8f0;">Target</th>
+                  <th style="padding:10px 12px;text-align:center;font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#64748b;border-bottom:1px solid #e2e8f0;">Score</th>
+                </tr>
+              </thead>
+              <tbody>${kpiRows}</tbody>
+            </table>
+          </div>`
+              : ""
+          }
+
+          ${
+            objectiveRows
+              ? `<!-- OBJECTIVES PROGRESS -->
+          <div style="padding:24px 36px;border-bottom:1px solid #f1f5f9;">
+            <div style="font-size:16px;font-weight:800;color:#0f172a;">Strategy progress</div>
+            <div style="margin-top:4px;font-size:12px;color:#94a3b8;">Objectives ranked by health</div>
+            <table cellpadding="0" cellspacing="0" style="width:100%;margin-top:16px;border-collapse:collapse;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;">
+              <thead>
+                <tr style="background:#f8fafc;">
+                  <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#64748b;border-bottom:1px solid #e2e8f0;">Objective</th>
+                  <th style="padding:10px 12px;text-align:center;font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#64748b;border-bottom:1px solid #e2e8f0;">Progress</th>
+                  <th style="padding:10px 12px;text-align:center;font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#64748b;border-bottom:1px solid #e2e8f0;width:60px;"></th>
+                </tr>
+              </thead>
+              <tbody>${objectiveRows}</tbody>
+            </table>
+          </div>`
+              : ""
+          }
+
+          <!-- IMMEDIATE ACTIONS -->
+          <div style="padding:24px 36px;border-bottom:1px solid #f1f5f9;">
+            <div style="font-size:16px;font-weight:800;color:#0f172a;">Immediate executive actions</div>
+            <div style="margin-top:14px;">${recList(immediate)}</div>
+          </div>
+
+          ${
+            thirtyDay.length || ninetyDay.length
+              ? `<!-- 30/90 DAY PLANS -->
+          <div style="padding:24px 36px;border-bottom:1px solid #f1f5f9;">
+            <table cellpadding="0" cellspacing="0" style="width:100%;">
+              <tr>
+                ${
+                  thirtyDay.length
+                    ? `<td style="width:${ninetyDay.length ? "49" : "100"}%;vertical-align:top;">
+                    <div style="font-size:14px;font-weight:800;color:#0f172a;">30-day plan</div>
+                    <div style="margin-top:10px;">${recList(thirtyDay)}</div>
+                  </td>`
+                    : ""
+                }
+                ${thirtyDay.length && ninetyDay.length ? `<td style="width:2%;"></td>` : ""}
+                ${
+                  ninetyDay.length
+                    ? `<td style="width:${thirtyDay.length ? "49" : "100"}%;vertical-align:top;">
+                    <div style="font-size:14px;font-weight:800;color:#0f172a;">90-day plan</div>
+                    <div style="margin-top:10px;">${recList(ninetyDay)}</div>
+                  </td>`
+                    : ""
+                }
+              </tr>
+            </table>
+          </div>`
+              : ""
+          }
+
+          <!-- FOOTER -->
+          <div style="padding:24px 36px;text-align:center;">
+            <div style="font-size:11px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:#94a3b8;">
+              Generated by ALAMIN Performance Intelligence
+            </div>
+          </div>
+
         </div>
       </div>
     </div>

@@ -771,7 +771,7 @@ export default function ReportsPage() {
                 return (
                   <div
                     key={run.id}
-                    className="rounded-[20px] border border-[var(--border)] bg-[var(--card)] p-4"
+                    className="rounded-[20px] border border-[var(--border)] bg-[var(--card)] p-4 transition hover:border-[var(--border-strong)]"
                   >
                     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                       <div className="min-w-0">
@@ -790,8 +790,17 @@ export default function ReportsPage() {
                         </div>
                       </div>
 
-                      <div className="text-sm text-[var(--foreground-faint)]">
-                        {fmtDate(run.generated_at)}
+                      <div className="flex flex-col items-start gap-2 md:items-end">
+                        <div className="text-sm text-[var(--foreground-faint)]">
+                          {fmtDate(run.generated_at)}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => router.push(`/o/${encodeURIComponent(orgSlug)}/reports/${encodeURIComponent(run.id)}`)}
+                          className={primaryButtonClass()}
+                        >
+                          View report
+                        </button>
                       </div>
                     </div>
 
