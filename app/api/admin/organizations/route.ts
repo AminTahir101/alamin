@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin, requireAdminUserFromBearer, normalizeSlug } from "@/lib/server/adminAccess";
+import { inviteOrAddMember } from "@/lib/server/invites";
 import type { PlanCode } from "@/lib/billing/features";
 
 export const runtime = "nodejs";
@@ -130,39 +131,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "Organization slug already exists" }, { status: 409 });
     }
 
-    let ownerUserId: string | null = null;
-
-    if (ownerEmail) {
-      const usersResult = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
-
-      if (usersResult.error) {
-        throw new Error(usersResult.error.message);
-      }
-
-      const matchedUser = usersResult.data.users.find(
-        (u) => String(u.email ?? "").trim().toLowerCase() === ownerEmail
-      );
-
-      if (matchedUser) {
-        ownerUserId = matchedUser.id;
-      } else {
-        const invite = await admin.auth.admin.inviteUserByEmail(ownerEmail, {
-          redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth`,
-          data: {
-            invited_to_org_slug: slug,
-            invited_by_admin: adminUser.email ?? "",
-            intended_role: "owner",
-          },
-        });
-
-        if (invite.error) {
-          throw new Error(invite.error.message);
-        }
-
-        ownerUserId = invite.data.user?.id ?? null;
-      }
-    }
-
+    // Step 1: Create the organization.
     const { data: createdOrg, error: createOrgError } = await admin
       .from("organizations")
       .insert({
@@ -179,18 +148,36 @@ export async function POST(req: NextRequest) {
       throw new Error(createOrgError?.message || "Failed to create organization");
     }
 
-    if (ownerUserId) {
-      const { error: memberInsertError } = await admin
-        .from("organization_members")
-        .insert({
-          org_id: createdOrg.id,
-          user_id: ownerUserId,
-          role: "owner",
-        });
+    // Step 2: If an owner email was provided, invite them OR add an existing
+    // user as the owner. Uses the canonical shared helper so metadata +
+    // redirectTo are consistent with settings and onboarding invite flows.
+    let ownerUserId: string | null = null;
 
-      if (memberInsertError) {
-        throw new Error(memberInsertError.message);
+    if (ownerEmail) {
+      const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || req.nextUrl.origin;
+      const outcome = await inviteOrAddMember(
+        admin,
+        {
+          email: ownerEmail,
+          role: "owner",
+          departmentId: null,
+        },
+        {
+          orgId: createdOrg.id,
+          orgSlug: createdOrg.slug,
+          orgName: createdOrg.name,
+          invitedBy: adminUser.id,
+          redirectTo: `${appBaseUrl}/accept-invite`,
+        },
+      );
+
+      if (outcome.status === "failed") {
+        // Roll back the org so we don't leave orphan rows around.
+        await admin.from("organizations").delete().eq("id", createdOrg.id);
+        throw new Error(outcome.error);
       }
+
+      ownerUserId = outcome.user_id;
     }
 
     const { error: subError } = await admin

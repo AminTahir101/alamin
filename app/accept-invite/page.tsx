@@ -65,32 +65,12 @@ export default function AcceptInvitePage() {
 
   useEffect(() => {
     let alive = true;
+    let resolved = false;
 
-    async function boot() {
-      // Give the Supabase SDK a moment to parse the URL hash / token
-      await new Promise((resolve) => setTimeout(resolve, 200));
-
-      if (!alive) return;
-
-      const { data, error: sessionErr } = await supabase.auth.getSession();
-
-      if (!alive) return;
-
-      if (sessionErr) {
-        setError(getErrorMessage(sessionErr, "Failed to read invite"));
-        setBooting(false);
-        return;
-      }
-
-      if (!data.session) {
-        setError(
-          "This invite link is invalid or has expired. Ask your admin to resend the invite.",
-        );
-        setBooting(false);
-        return;
-      }
-
-      const user = data.session.user;
+    function applySession(user: {
+      email: string | null | undefined;
+      user_metadata?: Record<string, unknown>;
+    }) {
       setEmail(user.email ?? null);
 
       const md = user.user_metadata ?? {};
@@ -109,12 +89,54 @@ export default function AcceptInvitePage() {
 
       setSessionReady(true);
       setBooting(false);
+      resolved = true;
+    }
+
+    // Listen to auth state changes. Supabase's SDK fires SIGNED_IN after
+    // parsing the URL hash token (detectSessionInUrl). We use this event
+    // instead of racing a timeout — it's deterministic.
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!alive || resolved) return;
+      if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && session) {
+        applySession(session.user);
+      }
+    });
+
+    async function boot() {
+      // Check if a session already exists (SDK may have parsed the hash
+      // synchronously, before our listener attached).
+      const { data, error: sessionErr } = await supabase.auth.getSession();
+
+      if (!alive || resolved) return;
+
+      if (sessionErr) {
+        setError(getErrorMessage(sessionErr, "Failed to read invite"));
+        setBooting(false);
+        return;
+      }
+
+      if (data.session) {
+        applySession(data.session.user);
+        return;
+      }
+
+      // No session yet. Wait up to 3 seconds for the SDK to parse the URL
+      // hash and fire SIGNED_IN via our listener. If it doesn't, the invite
+      // link is invalid.
+      setTimeout(() => {
+        if (!alive || resolved) return;
+        setError(
+          "This invite link is invalid or has expired. Ask your admin to resend the invite.",
+        );
+        setBooting(false);
+      }, 3000);
     }
 
     void boot();
 
     return () => {
       alive = false;
+      sub.subscription.unsubscribe();
     };
   }, []);
 

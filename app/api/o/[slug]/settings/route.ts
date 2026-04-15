@@ -1,6 +1,7 @@
 // app/api/o/[slug]/settings/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, type User } from "@supabase/supabase-js";
+import { inviteOrAddMember } from "@/lib/server/invites";
 
 export const runtime = "nodejs";
 
@@ -239,45 +240,6 @@ async function getMembersWithEmails(admin: ReturnType<typeof supabaseAdmin>, org
   });
 }
 
-async function findAuthUserByEmail(admin: ReturnType<typeof supabaseAdmin>, email: string) {
-  let page = 1;
-  const perPage = 200;
-  const target = email.trim().toLowerCase();
-
-  while (true) {
-    const result = await admin.auth.admin.listUsers({ page, perPage });
-    if (result.error) throw new Error(result.error.message);
-
-    const users = result.data.users ?? [];
-    const found = users.find((u) => String(u.email ?? "").trim().toLowerCase() === target);
-    if (found) return found;
-
-    if (users.length < perPage) break;
-    page += 1;
-  }
-
-  return null;
-}
-
-async function findOrInviteUserByEmail(
-  admin: ReturnType<typeof supabaseAdmin>,
-  email: string,
-  origin: string
-) {
-  const existing = await findAuthUserByEmail(admin, email);
-  if (existing) return existing;
-
-  const invited = await admin.auth.admin.inviteUserByEmail(email, {
-    redirectTo: `${origin}/auth`,
-  });
-
-  if (invited.error || !invited.data.user) {
-    throw new Error(invited.error?.message || "Failed to invite user");
-  }
-
-  return invited.data.user;
-}
-
 async function validateDepartmentIfNeeded(
   admin: ReturnType<typeof supabaseAdmin>,
   orgId: string,
@@ -299,39 +261,6 @@ async function validateDepartmentIfNeeded(
 
   if (error) throw new Error(error.message);
   if (!data) throw new Error("Selected department not found");
-}
-
-async function insertMembership(
-  admin: ReturnType<typeof supabaseAdmin>,
-  payload: {
-    org_id: string;
-    user_id: string;
-    role: Role;
-    created_by: string;
-    department_id?: string | null;
-  }
-) {
-  const firstTry = await admin.from("organization_members").insert(payload);
-
-  if (!firstTry.error) return;
-
-  const msg = firstTry.error.message || "";
-  const missingCreatedBy =
-    msg.includes("created_by") &&
-    (msg.includes("Could not find the") || msg.includes("column") || msg.includes("schema cache"));
-
-  if (!missingCreatedBy) {
-    throw new Error(firstTry.error.message);
-  }
-
-  const secondTry = await admin.from("organization_members").insert({
-    org_id: payload.org_id,
-    user_id: payload.user_id,
-    role: payload.role,
-    department_id: payload.department_id ?? null,
-  });
-
-  if (secondTry.error) throw new Error(secondTry.error.message);
 }
 
 async function updateMemberRole(
@@ -484,35 +413,45 @@ export async function POST(req: NextRequest, ctx: Ctx<{ slug: string }>) {
 
     await validateDepartmentIfNeeded(admin, org.id, role, departmentId);
 
-    const authUser = await findOrInviteUserByEmail(admin, email, req.nextUrl.origin);
+    const origin = req.nextUrl.origin;
+    const outcome = await inviteOrAddMember(
+      admin,
+      {
+        email,
+        role,
+        departmentId: roleSupportsDepartment(role) ? departmentId : null,
+      },
+      {
+        orgId: org.id,
+        orgSlug: org.slug,
+        orgName: org.name,
+        invitedBy: user.id,
+        redirectTo: `${origin}/accept-invite`,
+      },
+    );
 
-    const { data: existingMembership, error: existingErr } = await admin
-      .from("organization_members")
-      .select("user_id,role")
-      .eq("org_id", org.id)
-      .eq("user_id", authUser.id)
-      .maybeSingle<OrgMemberRow>();
-
-    if (existingErr) throw new Error(existingErr.message);
-
-    if (existingMembership) {
+    if (outcome.status === "failed") {
       return NextResponse.json(
-        { ok: false, error: "This user is already a member of the organization" },
-        { status: 409 }
+        { ok: false, error: outcome.error },
+        { status: 400 },
       );
     }
 
-    await insertMembership(admin, {
-      org_id: org.id,
-      user_id: authUser.id,
-      role,
-      created_by: user.id,
-      department_id: roleSupportsDepartment(role) ? departmentId : null,
-    });
+    if (outcome.status === "existing_member") {
+      return NextResponse.json(
+        { ok: false, error: "This user is already a member of the workspace" },
+        { status: 409 },
+      );
+    }
+
+    const message =
+      outcome.status === "invited_and_membership_created"
+        ? "Invite sent."
+        : "Existing user added to workspace.";
 
     return NextResponse.json({
       ...(await buildSettingsPayload(admin, org, user, currentRole)),
-      message: "Member added successfully",
+      message,
     });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "Failed to add member";
