@@ -68,7 +68,7 @@ export default function AcceptInvitePage() {
     let resolved = false;
 
     function applySession(user: {
-      email: string | null | undefined;
+      email?: string | null;
       user_metadata?: Record<string, unknown>;
     }) {
       setEmail(user.email ?? null);
