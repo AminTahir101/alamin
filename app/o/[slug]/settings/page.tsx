@@ -258,24 +258,17 @@ function WorkspaceSetupCard({ slug }: { slug: string }) {
     >
       <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
         <div className={cardClass()}>
-          <div className="text-base font-bold text-[var(--foreground)]">Revisit onboarding</div>
+          <div className="text-base font-bold text-[var(--foreground)]">Performance cycles</div>
           <div className="mt-2 text-sm leading-7 text-[var(--foreground-muted)]">
-            Update your company info, strategy, departments, or KPIs. The onboarding flow will walk you through the same steps you completed before.
+            View, create, or edit performance cycles. Each cycle represents a quarter or custom period for tracking objectives, OKRs, and KPIs.
           </div>
 
-          <div className="mt-5 flex flex-wrap gap-3">
+          <div className="mt-5">
             <Link
-              href={`/o/${encodeURIComponent(slug)}/onboarding`}
+              href={`/o/${encodeURIComponent(slug)}/cycles`}
               className="inline-flex h-11 items-center justify-center rounded-full bg-[var(--foreground)] px-5 text-sm font-semibold text-[var(--background)] transition hover:opacity-90"
             >
-              Open onboarding
-            </Link>
-
-            <Link
-              href={`/o/${encodeURIComponent(slug)}/dashboard`}
-              className="inline-flex h-11 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-5 text-sm font-medium text-[var(--foreground)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
-            >
-              Back to dashboard
+              Manage performance cycles
             </Link>
           </div>
         </div>
@@ -308,6 +301,139 @@ function MiniSettingItem({ title, desc }: { title: string; desc: string }) {
       <div className="text-sm font-semibold text-[var(--foreground)]">{title}</div>
       <div className="mt-1 text-sm leading-6 text-[var(--foreground-muted)]">{desc}</div>
     </div>
+  );
+}
+
+function StrategyCard({ slug }: { slug: string }) {
+  const [strategy, setStrategy] = useState("");
+  const [originalStrategy, setOriginalStrategy] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [ok, setOk] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const { data, error } = await supabase
+          .from("organizations")
+          .select("description")
+          .eq("slug", slug)
+          .maybeSingle();
+
+        if (!error && data) {
+          setStrategy(data.description ?? "");
+          setOriginalStrategy(data.description ?? "");
+        }
+      } catch {
+        // Non-fatal
+      } finally {
+        setLoading(false);
+      }
+    }
+    void load();
+  }, [slug]);
+
+  async function handleSave() {
+    const trimmed = strategy.trim();
+    if (!trimmed) {
+      setMsg("Strategy cannot be empty.");
+      return;
+    }
+    setSaving(true);
+    setMsg(null);
+    setOk(null);
+
+    try {
+      const { data: session } = await supabase.auth.getSession();
+      if (!session.session) return;
+
+      // Update organizations.description
+      const { error: orgErr } = await supabase
+        .from("organizations")
+        .update({ description: trimmed, updated_at: new Date().toISOString() })
+        .eq("slug", slug);
+
+      if (orgErr) throw new Error(orgErr.message);
+
+      // Also update org_ai_profiles.strategy_summary if it exists
+      const { data: orgRow } = await supabase
+        .from("organizations")
+        .select("id")
+        .eq("slug", slug)
+        .maybeSingle();
+
+      if (orgRow) {
+        await supabase
+          .from("org_ai_profiles")
+          .update({
+            strategy_summary: trimmed,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("org_id", orgRow.id);
+      }
+
+      setOriginalStrategy(trimmed);
+      setOk("Strategy saved.");
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Couldn't save strategy.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const isDirty = strategy.trim() !== originalStrategy;
+
+  return (
+    <SectionCard
+      title="Company strategy"
+      subtitle="The strategic direction that shapes AI-generated content"
+      className="bg-[var(--background-panel)]"
+    >
+      {loading ? (
+        <div className="h-40 animate-pulse rounded-[20px] border border-[var(--border)] bg-[var(--card)]" />
+      ) : (
+        <>
+          <div className="text-sm leading-7 text-[var(--foreground-muted)]">
+            This strategy is used as context when AI generates objectives, OKRs, KPIs, and reports. You can update it anytime without going through onboarding.
+          </div>
+
+          <textarea
+            value={strategy}
+            onChange={(e) => {
+              setStrategy(e.target.value);
+              setMsg(null);
+              setOk(null);
+            }}
+            className={`mt-4 min-h-[140px] w-full rounded-2xl border border-[var(--border)] bg-[var(--card)] px-4 py-3 text-sm leading-7 text-[var(--foreground)] outline-none transition placeholder:text-[var(--foreground-faint)] focus:border-[var(--border-strong)]`}
+            placeholder="Example: Grow enterprise revenue by improving sales efficiency, onboarding conversion, and cross-department execution discipline."
+          />
+
+          {msg ? (
+            <div className="mt-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-700 dark:text-red-200">
+              {msg}
+            </div>
+          ) : null}
+
+          {ok ? (
+            <div className="mt-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-700 dark:text-emerald-200">
+              {ok}
+            </div>
+          ) : null}
+
+          <div className="mt-4 flex justify-end">
+            <button
+              type="button"
+              onClick={() => void handleSave()}
+              disabled={saving || !isDirty}
+              className="inline-flex h-11 items-center justify-center rounded-full bg-[var(--foreground)] px-5 text-sm font-semibold text-[var(--background)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {saving ? "Saving…" : "Save strategy"}
+            </button>
+          </div>
+        </>
+      )}
+    </SectionCard>
   );
 }
 
@@ -822,6 +948,7 @@ export default function SettingsPage() {
       <div className="mt-6 grid gap-6">
         <AppearanceCard />
         <WorkspaceSetupCard slug={orgSlug} />
+        <StrategyCard slug={orgSlug} />
       </div>
 
       <div className="mt-6">

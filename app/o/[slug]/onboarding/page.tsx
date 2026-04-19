@@ -1,18 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams, usePathname, useRouter } from "next/navigation";
+import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
 import { AppPageHeader, AppShell } from "@/components/app/AppShell";
 import SectionCard from "@/components/ui/SectionCard";
-<div className="text-red-500 text-3xl font-bold">NEW ONBOARDING VERSION</div>
 
 type OnboardingBody = {
   companyName: string;
   orgSlug: string;
   year: number;
   quarter: number;
+  mode?: "revisit" | "new-cycle";
   departments: Array<{ name: string }>;
   kpis: Array<{
     title: string;
@@ -192,9 +192,18 @@ export default function OnboardingPage() {
   const params = useParams<{ slug?: string }>();
   const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const derivedSlug = slugFromPathname(pathname);
   const orgSlug = String(params?.slug ?? derivedSlug ?? "").trim();
+
+  // ──── Mode detection ────
+  // ?mode=revisit  → returning user, skip personal info, limited company fields
+  // ?mode=new-cycle → creating a new cycle from settings, go straight to strategy
+  // (no param)     → full first-time onboarding
+  const modeParam = searchParams?.get("mode") ?? "";
+  const isRevisit = modeParam === "revisit" || modeParam === "new-cycle";
+  const isNewCycle = modeParam === "new-cycle";
 
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -205,7 +214,10 @@ export default function OnboardingPage() {
   const now = new Date();
   const defaultQuarter = Math.max(1, Math.min(4, Math.floor(now.getMonth() / 3) + 1));
 
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  // In revisit/new-cycle mode, skip Step 1 (personal info).
+  // In new-cycle mode, skip Step 2 (company) too — go straight to strategy.
+  const initialStep: 1 | 2 | 3 = isNewCycle ? 3 : isRevisit ? 2 : 1;
+  const [step, setStep] = useState<1 | 2 | 3>(initialStep);
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -217,8 +229,15 @@ export default function OnboardingPage() {
   const [country, setCountry] = useState("Saudi Arabia");
   const [employeeCount, setEmployeeCount] = useState("");
 
-  const [year, setYear] = useState<number>(now.getFullYear());
-  const [quarter, setQuarter] = useState<number>(defaultQuarter);
+  // In new-cycle mode, read year/quarter from URL params (set by the cycles page)
+  const urlYear = Number(searchParams?.get("year") || 0);
+  const urlQuarter = Number(searchParams?.get("quarter") || 0);
+  const [year, setYear] = useState<number>(
+    isNewCycle && urlYear >= 2000 && urlYear <= 2100 ? urlYear : now.getFullYear(),
+  );
+  const [quarter, setQuarter] = useState<number>(
+    isNewCycle && [1, 2, 3, 4].includes(urlQuarter) ? urlQuarter : defaultQuarter,
+  );
 
   const [mainStrategy, setMainStrategy] = useState("");
   const [departments, setDepartments] = useState<DraftDepartment[]>([
@@ -317,23 +336,28 @@ export default function OnboardingPage() {
   }, [firstName, lastName, orgEmail]);
 
   const canContinueStep2 = useMemo(() => {
+    if (isRevisit) {
+      // In revisit mode, only cycle (year/quarter) and employee count matter
+      if (!employeeCount.trim()) return false;
+      return true;
+    }
     if (!companyName.trim()) return false;
     if (!industry.trim()) return false;
     if (!country.trim()) return false;
     if (!employeeCount.trim()) return false;
     if (country === "Saudi Arabia" && !registrationNumber.trim()) return false;
     return true;
-  }, [companyName, industry, country, employeeCount, registrationNumber]);
+  }, [isRevisit, companyName, industry, country, employeeCount, registrationNumber]);
 
   const canSubmit = useMemo(() => {
     if (!orgSlug) return false;
-    if (!canContinueStep1) return false;
+    if (!isRevisit && !canContinueStep1) return false;
     if (!canContinueStep2) return false;
     if (!mainStrategy.trim()) return false;
-    if (!departmentOptions.length) return false;
-    if (invalidKpis.length > 0) return false;
+    if (!isRevisit && !departmentOptions.length) return false;
+    if (!isRevisit && invalidKpis.length > 0) return false;
     return true;
-  }, [orgSlug, canContinueStep1, canContinueStep2, mainStrategy, departmentOptions.length, invalidKpis.length]);
+  }, [orgSlug, isRevisit, canContinueStep1, canContinueStep2, mainStrategy, departmentOptions.length, invalidKpis.length]);
 
   const persistDraft = useCallback(() => {
     const draft: OnboardingDraft = {
@@ -397,7 +421,45 @@ export default function OnboardingPage() {
         const session = await ensureAuth();
         if (!session) return;
 
-        const draft = readDraft();
+        // In revisit mode, fetch the existing org data so hidden fields
+        // (companyName, industry, country, etc.) are pre-populated and
+        // sent correctly in the submit payload.
+        if (isRevisit) {
+          try {
+            const { data: orgData, error: orgErr } = await supabase
+              .from("organizations")
+              .select("name, cr_number, industry, country, employee_count, description")
+              .eq("slug", orgSlug)
+              .maybeSingle();
+
+            if (!orgErr && orgData) {
+              setCompanyName(orgData.name ?? "");
+              setRegistrationNumber(orgData.cr_number ?? "");
+              setIndustry(orgData.industry ?? "Technology");
+              setCountry(orgData.country ?? "Saudi Arabia");
+              if (orgData.employee_count) {
+                setEmployeeCount(String(orgData.employee_count));
+              }
+              if (orgData.description) {
+                setMainStrategy(orgData.description);
+              }
+            }
+
+            // Pre-populate personal info from the current session user
+            // so the hidden Step 1 fields pass validation silently.
+            const email = session.user?.email ?? "";
+            setOrgEmail(email);
+            const meta = session.user?.user_metadata ?? {};
+            setFirstName(
+              typeof meta.first_name === "string" ? meta.first_name : email.split("@")[0] ?? "Admin",
+            );
+            setLastName(typeof meta.last_name === "string" ? meta.last_name : "");
+          } catch {
+            // Non-fatal — fields will just be empty, user can fill them
+          }
+        }
+
+        const draft = !isRevisit ? readDraft() : null;
         if (draft) {
           setFirstName(draft.personal.firstName ?? "");
           setLastName(draft.personal.lastName ?? "");
@@ -486,16 +548,21 @@ export default function OnboardingPage() {
         orgSlug,
         year,
         quarter,
-        departments: departments
-          .map((d) => ({ name: d.name.trim() }))
-          .filter((d) => d.name),
-        kpis: kpis.map((k) => ({
-          title: k.title.trim(),
-          departmentName: k.departmentName.trim(),
-          unit: k.unit.trim(),
-          target: Number(k.target),
-          current: Number(k.current),
-        })),
+        mode: isRevisit ? (isNewCycle ? "new-cycle" : "revisit") : undefined,
+        departments: isRevisit
+          ? []
+          : departments
+              .map((d) => ({ name: d.name.trim() }))
+              .filter((d) => d.name),
+        kpis: isRevisit
+          ? []
+          : kpis.map((k) => ({
+              title: k.title.trim(),
+              departmentName: k.departmentName.trim(),
+              unit: k.unit.trim(),
+              target: Number(k.target),
+              current: Number(k.current),
+            })),
         personal: {
           firstName: firstName.trim(),
           lastName: lastName.trim(),
@@ -509,13 +576,15 @@ export default function OnboardingPage() {
         },
         aiSetup: {
           mainStrategy: mainStrategy.trim(),
-          departmentHeads: departments
-            .map((d) => ({
-              departmentName: d.name.trim(),
-              headName: d.headName.trim(),
-              headEmail: d.headEmail.trim().toLowerCase(),
-            }))
-            .filter((d) => d.departmentName),
+          departmentHeads: isRevisit
+            ? []
+            : departments
+                .map((d) => ({
+                  departmentName: d.name.trim(),
+                  headName: d.headName.trim(),
+                  headEmail: d.headEmail.trim().toLowerCase(),
+                }))
+                .filter((d) => d.departmentName),
         },
       };
 
@@ -542,10 +611,17 @@ export default function OnboardingPage() {
       }
 
       clearDraft();
-      setOkMsg("Onboarding saved. Redirecting to dashboard...");
-      setTimeout(() => {
-        router.push(`/o/${encodeURIComponent(orgSlug)}/dashboard`);
-      }, 350);
+      if (isRevisit) {
+        setOkMsg("Strategy saved. Starting AI generation...");
+        setTimeout(() => {
+          router.push(`/o/${encodeURIComponent(orgSlug)}/ai-setup/generate`);
+        }, 350);
+      } else {
+        setOkMsg("Onboarding saved. Redirecting to dashboard...");
+        setTimeout(() => {
+          router.push(`/o/${encodeURIComponent(orgSlug)}/dashboard`);
+        }, 350);
+      }
     } catch (e: unknown) {
       setMsg(getErrorMessage(e, "Failed to submit onboarding"));
     } finally {
@@ -562,7 +638,7 @@ export default function OnboardingPage() {
           <button
             type="button"
             onClick={() => router.push(`/o/${encodeURIComponent(orgSlug)}/dashboard`)}
-            className="inline-flex h-11 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-5 text-sm font-medium text-[var(--foreground-soft)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
+            className="inline-flex h-11 items-center justify-center rounded-full border border-white/12 bg-white/5 px-5 text-sm font-medium text-white/90 transition hover:border-white/20 hover:bg-white/8"
           >
             Skip for now
           </button>
@@ -570,7 +646,7 @@ export default function OnboardingPage() {
             type="button"
             onClick={() => void submit()}
             disabled={!canSubmit || saving || loading}
-            className="inline-flex h-11 items-center justify-center rounded-full bg-[var(--foreground)] px-5 text-sm font-semibold text-[var(--background)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex h-11 items-center justify-center rounded-full bg-white px-5 text-sm font-semibold text-[#07090D] transition hover:bg-white/92 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {saving ? "Saving..." : "Complete onboarding"}
           </button>
@@ -600,25 +676,37 @@ export default function OnboardingPage() {
       )}
 
       <div className="mb-6 grid gap-4 md:grid-cols-4">
-        <SummaryStat label="Step 1" value="Personal" hint="Who is setting up the workspace" active={step === 1} />
-        <SummaryStat label="Step 2" value="Company" hint="Business context and org identity" active={step === 2} />
-        <SummaryStat label="Step 3" value="AI Setup" hint="Strategy, departments, and ownership" active={step === 3} />
-        <SummaryStat label="Cycle" value={getQuarterLabel(quarter, year)} hint="Initial reporting period" active={false} />
+        {!isRevisit ? (
+          <SummaryStat label="Step 1" value="Personal" hint="Who is setting up the workspace" active={step === 1} />
+        ) : null}
+        <SummaryStat
+          label={isRevisit ? "Step 1" : "Step 2"}
+          value={isRevisit ? "Cycle" : "Company"}
+          hint={isRevisit ? "Performance cycle and headcount" : "Business context and org identity"}
+          active={step === 2}
+        />
+        <SummaryStat
+          label={isRevisit ? "Step 2" : "Step 3"}
+          value="Strategy"
+          hint={isRevisit ? "Set the strategic direction for this cycle" : "Strategy, departments, and ownership"}
+          active={step === 3}
+        />
+        <SummaryStat label="Cycle" value={getQuarterLabel(quarter, year)} hint="Reporting period" active={false} />
       </div>
 
-      {step === 1 ? (
+      {step === 1 && !isRevisit ? (
         <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
           <SectionCard
             title="A. Personal Info"
             subtitle="Start with the person responsible for setting up the workspace"
-            className=""
+            className="bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.03))]"
           >
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="First name">
                 <input
                   value={firstName}
                   onChange={(e) => setFirstName(e.target.value)}
-                  className="h-12 rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none transition placeholder:text-[var(--foreground-faint)] focus:border-[var(--border-strong)]"
+                  className="h-12 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition placeholder:text-white/25 focus:border-white/20"
                   placeholder="First name"
                 />
               </Field>
@@ -627,7 +715,7 @@ export default function OnboardingPage() {
                 <input
                   value={lastName}
                   onChange={(e) => setLastName(e.target.value)}
-                  className="h-12 rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none transition placeholder:text-[var(--foreground-faint)] focus:border-[var(--border-strong)]"
+                  className="h-12 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition placeholder:text-white/25 focus:border-white/20"
                   placeholder="Last name"
                 />
               </Field>
@@ -637,7 +725,7 @@ export default function OnboardingPage() {
                   <input
                     value={orgEmail}
                     onChange={(e) => setOrgEmail(e.target.value)}
-                    className="h-12 rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none transition placeholder:text-[var(--foreground-faint)] focus:border-[var(--border-strong)]"
+                    className="h-12 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition placeholder:text-white/25 focus:border-white/20"
                     placeholder="name@company.com"
                     type="email"
                   />
@@ -650,7 +738,7 @@ export default function OnboardingPage() {
                 type="button"
                 onClick={() => setStep(2)}
                 disabled={!canContinueStep1}
-                className="inline-flex h-11 items-center justify-center rounded-full bg-[var(--foreground)] px-5 text-sm font-semibold text-[var(--background)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex h-11 items-center justify-center rounded-full bg-white px-5 text-sm font-semibold text-[#07090D] transition hover:bg-white/92 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Continue to company info
               </button>
@@ -660,7 +748,7 @@ export default function OnboardingPage() {
           <SectionCard
             title="Why this matters"
             subtitle="Get the workspace owner and initial context right"
-            className="bg-[linear-gradient(180deg,rgba(124,58,237,0.08),transparent)]"
+            className="bg-[linear-gradient(180deg,rgba(124,58,237,0.12),rgba(255,255,255,0.03))]"
           >
             <div className="grid gap-3">
               <MiniStep
@@ -686,65 +774,69 @@ export default function OnboardingPage() {
       {step === 2 ? (
         <div className="grid gap-6 xl:grid-cols-[1.08fr_0.92fr]">
           <SectionCard
-            title="B. Company Info"
-            subtitle="Define the company identity and business context"
-            className=""
+            title={isRevisit ? "Performance cycle" : "B. Company Info"}
+            subtitle={isRevisit ? "Set the cycle and update headcount" : "Define the company identity and business context"}
+            className="bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.03))]"
           >
             <div className="grid gap-4 md:grid-cols-2">
-              <Field label="Company name">
-                <input
-                  value={companyName}
-                  onChange={(e) => setCompanyName(e.target.value)}
-                  className="h-12 rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none transition placeholder:text-[var(--foreground-faint)] focus:border-[var(--border-strong)]"
-                  placeholder="Company name"
-                />
-              </Field>
+              {!isRevisit ? (
+                <>
+                  <Field label="Company name">
+                    <input
+                      value={companyName}
+                      onChange={(e) => setCompanyName(e.target.value)}
+                      className="h-12 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition placeholder:text-white/25 focus:border-white/20"
+                      placeholder="Company name"
+                    />
+                  </Field>
 
-              <Field
-                label="Company registration number"
-                hint={country === "Saudi Arabia" ? "Saudi companies only" : "Optional outside Saudi Arabia"}
-              >
-                <input
-                  value={registrationNumber}
-                  onChange={(e) => setRegistrationNumber(e.target.value)}
-                  className="h-12 rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none transition placeholder:text-[var(--foreground-faint)] focus:border-[var(--border-strong)]"
-                  placeholder="CR Number"
-                />
-              </Field>
+                  <Field
+                    label="Company registration number"
+                    hint={country === "Saudi Arabia" ? "Saudi companies only" : "Optional outside Saudi Arabia"}
+                  >
+                    <input
+                      value={registrationNumber}
+                      onChange={(e) => setRegistrationNumber(e.target.value)}
+                      className="h-12 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition placeholder:text-white/25 focus:border-white/20"
+                      placeholder="CR Number"
+                    />
+                  </Field>
 
-              <Field label="Industry">
-                <select
-                  value={industry}
-                  onChange={(e) => setIndustry(e.target.value)}
-                  className="h-12 rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none transition focus:border-[var(--border-strong)]"
-                >
-                  {INDUSTRIES.map((item) => (
-                    <option key={item} value={item}>
-                      {item}
-                    </option>
-                  ))}
-                </select>
-              </Field>
+                  <Field label="Industry">
+                    <select
+                      value={industry}
+                      onChange={(e) => setIndustry(e.target.value)}
+                      className="h-12 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition focus:border-white/20"
+                    >
+                      {INDUSTRIES.map((item) => (
+                        <option key={item} value={item} className="bg-[#0D1118] text-white">
+                          {item}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
 
-              <Field label="Country">
-                <select
-                  value={country}
-                  onChange={(e) => setCountry(e.target.value)}
-                  className="h-12 rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none transition focus:border-[var(--border-strong)]"
-                >
-                  {COUNTRIES.map((item) => (
-                    <option key={item} value={item}>
-                      {item}
-                    </option>
-                  ))}
-                </select>
-              </Field>
+                  <Field label="Country">
+                    <select
+                      value={country}
+                      onChange={(e) => setCountry(e.target.value)}
+                      className="h-12 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition focus:border-white/20"
+                    >
+                      {COUNTRIES.map((item) => (
+                        <option key={item} value={item} className="bg-[#0D1118] text-white">
+                          {item}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                </>
+              ) : null}
 
               <Field label="Number of employees">
                 <input
                   value={employeeCount}
                   onChange={(e) => setEmployeeCount(e.target.value)}
-                  className="h-12 rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none transition placeholder:text-[var(--foreground-faint)] focus:border-[var(--border-strong)]"
+                  className="h-12 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition placeholder:text-white/25 focus:border-white/20"
                   placeholder="e.g. 500"
                   type="number"
                   inputMode="numeric"
@@ -756,14 +848,14 @@ export default function OnboardingPage() {
                   <input
                     value={String(year)}
                     onChange={(e) => setYear(toNumber(e.target.value, year))}
-                    className="h-12 rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none transition placeholder:text-[var(--foreground-faint)] focus:border-[var(--border-strong)]"
+                    className="h-12 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition placeholder:text-white/25 focus:border-white/20"
                     inputMode="numeric"
                     placeholder="2026"
                   />
                   <select
                     value={String(quarter)}
                     onChange={(e) => setQuarter(toNumber(e.target.value, quarter))}
-                    className="h-12 rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none transition focus:border-[var(--border-strong)]"
+                    className="h-12 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition focus:border-white/20"
                   >
                     <option value="1">Q1</option>
                     <option value="2">Q2</option>
@@ -775,21 +867,31 @@ export default function OnboardingPage() {
             </div>
 
             <div className="mt-6 flex items-center justify-between gap-3">
-              <button
-                type="button"
-                onClick={() => setStep(1)}
-                className="inline-flex h-11 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-5 text-sm font-medium text-[var(--foreground-soft)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
-              >
-                Back
-              </button>
+              {!isRevisit ? (
+                <button
+                  type="button"
+                  onClick={() => setStep(1)}
+                  className="inline-flex h-11 items-center justify-center rounded-full border border-white/12 bg-white/5 px-5 text-sm font-medium text-white/90 transition hover:border-white/20 hover:bg-white/8"
+                >
+                  Back
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => router.push(`/o/${encodeURIComponent(orgSlug)}/settings`)}
+                  className="inline-flex h-11 items-center justify-center rounded-full border border-white/12 bg-white/5 px-5 text-sm font-medium text-white/90 transition hover:border-white/20 hover:bg-white/8"
+                >
+                  Cancel
+                </button>
+              )}
 
               <button
                 type="button"
                 onClick={() => setStep(3)}
                 disabled={!canContinueStep2}
-                className="inline-flex h-11 items-center justify-center rounded-full bg-[var(--foreground)] px-5 text-sm font-semibold text-[var(--background)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex h-11 items-center justify-center rounded-full bg-white px-5 text-sm font-semibold text-[#07090D] transition hover:bg-white/92 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Continue to AI setup
+                Continue to strategy
               </button>
             </div>
           </SectionCard>
@@ -797,7 +899,7 @@ export default function OnboardingPage() {
           <SectionCard
             title="Company summary"
             subtitle="How the workspace will be initialized"
-            className="bg-[linear-gradient(180deg,rgba(124,58,237,0.08),transparent)]"
+            className="bg-[linear-gradient(180deg,rgba(124,58,237,0.12),rgba(255,255,255,0.03))]"
           >
             <div className="grid gap-3">
               <SummaryRow label="Company" value={companyName || "Not set"} />
@@ -814,54 +916,67 @@ export default function OnboardingPage() {
         <div className="grid gap-6">
           <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
             <SectionCard
-              title="C. Setup your AI"
-              subtitle="Give the product the right strategic and organizational foundation"
-              className=""
+              title={isRevisit ? "Set your strategy" : "C. Setup your AI"}
+              subtitle={isRevisit ? "Define the strategic direction for this performance cycle" : "Give the product the right strategic and organizational foundation"}
+              className="bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.03))]"
             >
               <Field label="Main Company Strategy" hint="This becomes the starting context for AI generation">
                 <textarea
                   value={mainStrategy}
                   onChange={(e) => setMainStrategy(e.target.value)}
-                  className="min-h-[180px] rounded-[22px] border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 py-4 text-[var(--foreground)] outline-none transition placeholder:text-[var(--foreground-faint)] focus:border-[var(--border-strong)]"
+                  className="min-h-[180px] rounded-[22px] border border-white/10 bg-black/20 px-4 py-4 text-white outline-none transition placeholder:text-white/25 focus:border-white/20"
                   placeholder="Example: Grow enterprise revenue by improving sales efficiency, onboarding conversion, and cross-department execution discipline across the next two quarters."
                 />
               </Field>
             </SectionCard>
 
             <SectionCard
-              title="Setup summary"
-              subtitle="What this onboarding will create"
-              className="bg-[linear-gradient(180deg,rgba(124,58,237,0.08),transparent)]"
+              title={isRevisit ? "Cycle summary" : "Setup summary"}
+              subtitle={isRevisit ? "What will be created for this cycle" : "What this onboarding will create"}
+              className="bg-[linear-gradient(180deg,rgba(124,58,237,0.12),rgba(255,255,255,0.03))]"
             >
               <div className="grid gap-3">
-                <SummaryRow label="Owner" value={`${firstName} ${lastName}`.trim() || "Not set"} />
-                <SummaryRow label="Organization email" value={orgEmail || "Not set"} />
+                {!isRevisit ? (
+                  <>
+                    <SummaryRow label="Owner" value={`${firstName} ${lastName}`.trim() || "Not set"} />
+                    <SummaryRow label="Organization email" value={orgEmail || "Not set"} />
+                  </>
+                ) : null}
                 <SummaryRow label="Company" value={companyName || "Not set"} />
-                <SummaryRow label="Departments" value={String(departmentOptions.length)} />
-                <SummaryRow label="KPIs" value={String(kpis.length)} />
+                <SummaryRow label="Cycle" value={getQuarterLabel(quarter, year)} />
+                <SummaryRow label="Employees" value={employeeCount || "Not set"} />
+                {!isRevisit ? (
+                  <>
+                    <SummaryRow label="Departments" value={String(departmentOptions.length)} />
+                    <SummaryRow label="KPIs" value={String(kpis.length)} />
+                  </>
+                ) : null}
+                <SummaryRow label="Strategy" value={mainStrategy ? "Defined" : "Not set"} />
               </div>
 
               <div className="mt-5 flex items-center justify-between gap-3">
                 <button
                   type="button"
-                  onClick={() => setStep(2)}
-                  className="inline-flex h-11 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-5 text-sm font-medium text-[var(--foreground-soft)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
+                  onClick={() => isNewCycle ? router.push(`/o/${encodeURIComponent(orgSlug)}/settings`) : setStep(2)}
+                  className="inline-flex h-11 items-center justify-center rounded-full border border-white/12 bg-white/5 px-5 text-sm font-medium text-white/90 transition hover:border-white/20 hover:bg-white/8"
                 >
-                  Back
+                  {isNewCycle ? "Cancel" : "Back"}
                 </button>
 
                 <button
                   type="button"
                   onClick={() => void submit()}
                   disabled={!canSubmit || saving || loading}
-                  className="inline-flex h-11 items-center justify-center rounded-full bg-[var(--foreground)] px-5 text-sm font-semibold text-[var(--background)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="inline-flex h-11 items-center justify-center rounded-full bg-white px-5 text-sm font-semibold text-[#07090D] transition hover:bg-white/92 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {saving ? "Saving..." : "Complete onboarding"}
+                  {saving ? "Saving..." : isRevisit ? "Save and generate" : "Complete onboarding"}
                 </button>
               </div>
             </SectionCard>
           </div>
 
+          {!isRevisit ? (
+            <>
           <SectionCard
             title="Departments and Head of Departments"
             subtitle="Define the first organizational structure and accountable owners"
@@ -869,25 +984,25 @@ export default function OnboardingPage() {
               <button
                 type="button"
                 onClick={addDepartment}
-                className="inline-flex h-10 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-sm font-semibold text-[var(--foreground-soft)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
+                className="inline-flex h-10 items-center justify-center rounded-full border border-white/12 bg-white/5 px-4 text-sm font-semibold text-white/85 transition hover:border-white/20 hover:bg-white/8"
               >
                 Add department
               </button>
             }
-            className=""
+            className="bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.03))]"
           >
             <div className="grid gap-4">
               {departments.map((department, index) => (
                 <div
                   key={`department-${index}`}
-                  className="rounded-[24px] border border-[var(--border)] bg-[var(--card-subtle)] p-4"
+                  className="rounded-[24px] border border-white/10 bg-white/[0.03] p-4"
                 >
                   <div className="mb-4 flex items-start justify-between gap-3">
                     <div>
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">
                         Department {index + 1}
                       </div>
-                      <div className="mt-1 text-sm text-[var(--foreground-muted)]">
+                      <div className="mt-1 text-sm text-white/55">
                         Department name and accountable head
                       </div>
                     </div>
@@ -907,7 +1022,7 @@ export default function OnboardingPage() {
                       <input
                         value={department.name}
                         onChange={(e) => updateDepartment(index, { name: e.target.value })}
-                        className="h-11 rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none transition placeholder:text-[var(--foreground-faint)] focus:border-[var(--border-strong)]"
+                        className="h-11 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition placeholder:text-white/25 focus:border-white/20"
                         placeholder="Sales"
                       />
                     </Field>
@@ -916,7 +1031,7 @@ export default function OnboardingPage() {
                       <input
                         value={department.headName}
                         onChange={(e) => updateDepartment(index, { headName: e.target.value })}
-                        className="h-11 rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none transition placeholder:text-[var(--foreground-faint)] focus:border-[var(--border-strong)]"
+                        className="h-11 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition placeholder:text-white/25 focus:border-white/20"
                         placeholder="Head name"
                       />
                     </Field>
@@ -925,7 +1040,7 @@ export default function OnboardingPage() {
                       <input
                         value={department.headEmail}
                         onChange={(e) => updateDepartment(index, { headEmail: e.target.value })}
-                        className="h-11 rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none transition placeholder:text-[var(--foreground-faint)] focus:border-[var(--border-strong)]"
+                        className="h-11 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition placeholder:text-white/25 focus:border-white/20"
                         placeholder="head@company.com"
                         type="email"
                       />
@@ -943,12 +1058,12 @@ export default function OnboardingPage() {
               <button
                 type="button"
                 onClick={addKpi}
-                className="inline-flex h-10 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-sm font-semibold text-[var(--foreground-soft)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
+                className="inline-flex h-10 items-center justify-center rounded-full border border-white/12 bg-white/5 px-4 text-sm font-semibold text-white/85 transition hover:border-white/20 hover:bg-white/8"
               >
                 Add KPI
               </button>
             }
-            className=""
+            className="bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.03))]"
           >
             <div className="grid gap-4">
               {kpis.map((kpi, index) => {
@@ -957,14 +1072,14 @@ export default function OnboardingPage() {
                 return (
                   <div
                     key={`kpi-${index}`}
-                    className="rounded-[24px] border border-[var(--border)] bg-[var(--card-subtle)] p-4"
+                    className="rounded-[24px] border border-white/10 bg-white/[0.03] p-4"
                   >
                     <div className="mb-4 flex items-start justify-between gap-3">
                       <div>
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">
                           KPI {index + 1}
                         </div>
-                        <div className="mt-1 text-sm text-[var(--foreground-muted)]">
+                        <div className="mt-1 text-sm text-white/55">
                           Define one measurable business signal
                         </div>
                       </div>
@@ -984,7 +1099,7 @@ export default function OnboardingPage() {
                         <input
                           value={kpi.title}
                           onChange={(e) => updateKpi(index, { title: e.target.value })}
-                          className="h-11 rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none transition placeholder:text-[var(--foreground-faint)] focus:border-[var(--border-strong)]"
+                          className="h-11 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition placeholder:text-white/25 focus:border-white/20"
                           placeholder="Bookings per week"
                         />
                       </Field>
@@ -994,11 +1109,11 @@ export default function OnboardingPage() {
                           <select
                             value={kpi.departmentName}
                             onChange={(e) => updateKpi(index, { departmentName: e.target.value })}
-                            className="h-11 rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none transition focus:border-[var(--border-strong)]"
+                            className="h-11 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition focus:border-white/20"
                           >
                             <option value="">Select department</option>
                             {departmentOptions.map((departmentName) => (
-                              <option key={departmentName} value={departmentName}>
+                              <option key={departmentName} value={departmentName} className="bg-[#0D1118] text-white">
                                 {departmentName}
                               </option>
                             ))}
@@ -1007,7 +1122,7 @@ export default function OnboardingPage() {
                           <input
                             value={kpi.departmentName}
                             onChange={(e) => updateKpi(index, { departmentName: e.target.value })}
-                            className="h-11 rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none transition placeholder:text-[var(--foreground-faint)] focus:border-[var(--border-strong)]"
+                            className="h-11 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition placeholder:text-white/25 focus:border-white/20"
                             placeholder="Department name"
                           />
                         )}
@@ -1017,7 +1132,7 @@ export default function OnboardingPage() {
                         <input
                           value={kpi.unit}
                           onChange={(e) => updateKpi(index, { unit: e.target.value })}
-                          className="h-11 rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none transition placeholder:text-[var(--foreground-faint)] focus:border-[var(--border-strong)]"
+                          className="h-11 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition placeholder:text-white/25 focus:border-white/20"
                           placeholder="count, %, SAR, score"
                         />
                       </Field>
@@ -1026,7 +1141,7 @@ export default function OnboardingPage() {
                         <input
                           value={kpi.target}
                           onChange={(e) => updateKpi(index, { target: e.target.value })}
-                          className="h-11 rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none transition placeholder:text-[var(--foreground-faint)] focus:border-[var(--border-strong)]"
+                          className="h-11 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition placeholder:text-white/25 focus:border-white/20"
                           inputMode="decimal"
                           placeholder="100"
                         />
@@ -1036,20 +1151,20 @@ export default function OnboardingPage() {
                         <input
                           value={kpi.current}
                           onChange={(e) => updateKpi(index, { current: e.target.value })}
-                          className="h-11 rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none transition placeholder:text-[var(--foreground-faint)] focus:border-[var(--border-strong)]"
+                          className="h-11 rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none transition placeholder:text-white/25 focus:border-white/20"
                           inputMode="decimal"
                           placeholder="0"
                         />
                       </Field>
 
-                      <div className="rounded-[18px] border border-[var(--border)] bg-[var(--card-subtle)] px-4 py-3">
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
+                      <div className="rounded-[18px] border border-white/8 bg-black/20 px-4 py-3">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">
                           Progress preview
                         </div>
-                        <div className="mt-2 text-lg font-semibold text-[var(--foreground)]">
+                        <div className="mt-2 text-lg font-semibold text-white">
                           {getCompletionLabel(kpi.current, kpi.target)}
                         </div>
-                        <div className="mt-2 h-2 overflow-hidden rounded-full bg-[var(--border)]">
+                        <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/8">
                           <div
                             className="h-full rounded-full bg-[linear-gradient(90deg,#7C3AED_0%,#22D3EE_100%)]"
                             style={{ width: `${getCompletionPercent(kpi.current, kpi.target)}%` }}
@@ -1068,10 +1183,12 @@ export default function OnboardingPage() {
               })}
             </div>
 
-            <div className="mt-5 rounded-[18px] border border-[var(--border)] bg-[var(--card-subtle)] px-4 py-3 text-sm text-[var(--foreground-muted)]">
+            <div className="mt-5 rounded-[18px] border border-white/8 bg-black/20 px-4 py-3 text-sm text-white/50">
               KPI department names must match one of the departments above.
             </div>
           </SectionCard>
+            </>
+          ) : null}
         </div>
       ) : null}
     </AppShell>
@@ -1088,10 +1205,10 @@ function Field({
   children: React.ReactNode;
 }) {
   return (
-    <label className="grid gap-2 text-sm text-[var(--foreground-soft)]">
+    <label className="grid gap-2 text-sm text-white/68">
       <div className="flex items-center justify-between gap-3">
         <span>{label}</span>
-        {hint ? <span className="text-xs text-[var(--foreground-faint)]">{hint}</span> : null}
+        {hint ? <span className="text-xs text-white/35">{hint}</span> : null}
       </div>
       {children}
     </label>
@@ -1112,17 +1229,17 @@ function SummaryStat({
   return (
     <div
       className={[
-        "rounded-[24px] border p-5 alamin-shadow",
+        "rounded-[24px] border p-5 shadow-[0_16px_36px_rgba(0,0,0,0.22)]",
         active
-          ? "border-[#7c3aed]/45 bg-[rgba(124,58,237,0.12)] ring-1 ring-[#7c3aed]/20"
-          : "border-[var(--border)] bg-[var(--card-subtle)]",
+          ? "border-[#A78BFA]/35 bg-[linear-gradient(180deg,rgba(124,58,237,0.2),rgba(255,255,255,0.06))]"
+          : "border-white/10 bg-white/[0.04]",
       ].join(" ")}
     >
-      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">
         {label}
       </div>
-      <div className="mt-3 text-2xl font-semibold tracking-tight text-[var(--foreground)]">{value}</div>
-      <div className="mt-2 text-sm text-[var(--foreground-muted)]">{hint}</div>
+      <div className="mt-3 text-2xl font-semibold tracking-tight text-white">{value}</div>
+      <div className="mt-2 text-sm text-white/55">{hint}</div>
     </div>
   );
 }
@@ -1135,9 +1252,9 @@ function SummaryRow({
   value: string;
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 rounded-[18px] border border-[var(--border)] bg-[var(--card-subtle)] px-4 py-3">
-      <div className="text-sm text-[var(--foreground-muted)]">{label}</div>
-      <div className="max-w-[60%] text-right text-sm font-semibold text-[var(--foreground)]">{value}</div>
+    <div className="flex items-start justify-between gap-4 rounded-[18px] border border-white/8 bg-black/20 px-4 py-3">
+      <div className="text-sm text-white/50">{label}</div>
+      <div className="max-w-[60%] text-right text-sm font-semibold text-white">{value}</div>
     </div>
   );
 }
@@ -1152,13 +1269,13 @@ function MiniStep({
   desc: string;
 }) {
   return (
-    <div className="flex gap-3 rounded-[18px] border border-[var(--border)] bg-[var(--card-subtle)] p-3">
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--card-subtle)] text-xs font-semibold text-[var(--foreground)]">
+    <div className="flex gap-3 rounded-[18px] border border-white/8 bg-black/20 p-3">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-xs font-semibold text-white">
         {step}
       </div>
       <div>
-        <div className="text-sm font-semibold text-[var(--foreground)]">{title}</div>
-        <div className="mt-1 text-sm leading-6 text-[var(--foreground-muted)]">{desc}</div>
+        <div className="text-sm font-semibold text-white">{title}</div>
+        <div className="mt-1 text-sm leading-6 text-white/55">{desc}</div>
       </div>
     </div>
   );

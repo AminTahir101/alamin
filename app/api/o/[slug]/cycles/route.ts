@@ -1,196 +1,141 @@
 // app/api/o/[slug]/cycles/route.ts
-//
-// GET — List all cycles for the org (active first)
-// POST — Create a new cycle. Optionally activate it (deactivates others).
-
 import { NextRequest, NextResponse } from "next/server";
 import { requireAccessScope, supabaseAdmin } from "@/lib/server/accessScope";
 
 export const runtime = "nodejs";
 
-type Ctx = { params: Promise<{ slug: string }> };
+type Ctx<P extends Record<string, string>> = { params: Promise<P> };
 
 type CycleRow = {
   id: string;
   org_id: string;
   year: number;
   quarter: number;
-  starts_on: string | null;
-  ends_on: string | null;
   status: string;
   name: string | null;
+  starts_on: string | null;
+  ends_on: string | null;
+  created_by: string | null;
   created_at: string;
 };
 
-function quarterDates(year: number, quarter: number) {
-  const q = Math.max(1, Math.min(4, quarter));
-  const startMonth = (q - 1) * 3;
-  const start = new Date(Date.UTC(year, startMonth, 1));
-  const end = new Date(Date.UTC(year, startMonth + 3, 0));
-  const toDate = (d: Date) => d.toISOString().slice(0, 10);
-  return {
-    starts_on: toDate(start),
-    ends_on: toDate(end),
-    name: `Q${q} ${year}`,
-  };
-}
-
-export async function GET(req: NextRequest, ctx: Ctx) {
+export async function GET(req: NextRequest, ctx: Ctx<{ slug: string }>) {
   try {
     const { slug } = await ctx.params;
     const scope = await requireAccessScope(req, slug);
-
-    if (!["owner", "admin", "manager"].includes(scope.role)) {
-      return NextResponse.json(
-        { ok: false, error: "No permission" },
-        { status: 403 },
-      );
-    }
-
     const admin = supabaseAdmin();
 
     const { data, error } = await admin
       .from("quarterly_cycles")
-      .select(
-        "id,org_id,year,quarter,starts_on,ends_on,status,name,created_at",
-      )
+      .select("*")
       .eq("org_id", scope.org.id)
       .order("year", { ascending: false })
-      .order("quarter", { ascending: false })
-      .returns<CycleRow[]>();
+      .order("quarter", { ascending: false });
 
     if (error) throw new Error(error.message);
 
-    const cycles = data ?? [];
-    const activeCycle = cycles.find((c) => c.status === "active") ?? null;
-
     return NextResponse.json({
       ok: true,
-      cycles,
-      activeCycle,
+      cycles: (data ?? []) as CycleRow[],
+      org: scope.org,
     });
-  } catch (error: unknown) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error:
-          error instanceof Error ? error.message : "Failed to load cycles",
-      },
-      { status: 400 },
-    );
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "Failed to load cycles";
+    return NextResponse.json({ ok: false, error: msg }, { status: 400 });
   }
 }
 
-type CreateBody = {
-  year?: number;
-  quarter?: number;
-  activate?: boolean;
-  starts_on?: string;
-  ends_on?: string;
-};
-
-export async function POST(req: NextRequest, ctx: Ctx) {
+export async function POST(req: NextRequest, ctx: Ctx<{ slug: string }>) {
   try {
     const { slug } = await ctx.params;
     const scope = await requireAccessScope(req, slug);
 
-    if (!["owner", "admin"].includes(scope.role)) {
-      return NextResponse.json(
-        { ok: false, error: "Only owner or admin can create cycles" },
-        { status: 403 },
-      );
-    }
-
-    const body = (await req.json()) as CreateBody;
-    const year = Number(body.year);
-    const quarter = Number(body.quarter);
-    const activate = body.activate !== false; // default true
-
-    if (!Number.isFinite(year) || year < 2000 || year > 2100) {
-      return NextResponse.json(
-        { ok: false, error: "year is invalid" },
-        { status: 400 },
-      );
-    }
-    if (![1, 2, 3, 4].includes(quarter)) {
-      return NextResponse.json(
-        { ok: false, error: "quarter must be 1 to 4" },
-        { status: 400 },
-      );
+    if (scope.role !== "owner" && scope.role !== "admin") {
+      return NextResponse.json({ ok: false, error: "Only owners and admins can create cycles" }, { status: 403 });
     }
 
     const admin = supabaseAdmin();
+    const body = (await req.json()) as { year?: number; quarter?: number };
+    const year = Number(body.year);
+    const quarter = Number(body.quarter);
 
-    // Check if cycle for that year/quarter already exists
-    const { data: existing, error: existingErr } = await admin
+    if (!Number.isFinite(year) || year < 2000 || year > 2100) {
+      return NextResponse.json({ ok: false, error: "Invalid year" }, { status: 400 });
+    }
+    if (![1, 2, 3, 4].includes(quarter)) {
+      return NextResponse.json({ ok: false, error: "Quarter must be 1-4" }, { status: 400 });
+    }
+
+    await admin
       .from("quarterly_cycles")
-      .select("id,year,quarter,status")
+      .update({ status: "completed", updated_at: new Date().toISOString() })
       .eq("org_id", scope.org.id)
-      .eq("year", year)
-      .eq("quarter", quarter)
-      .maybeSingle<{ id: string; year: number; quarter: number; status: string }>();
+      .eq("status", "active");
 
-    if (existingErr) throw new Error(existingErr.message);
+    const startMonth = (quarter - 1) * 3;
+    const startsOn = new Date(year, startMonth, 1).toISOString().slice(0, 10);
+    const endsOn = new Date(year, startMonth + 3, 0).toISOString().slice(0, 10);
 
-    if (existing) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: `Cycle Q${quarter} ${year} already exists`,
-          cycle: existing,
-        },
-        { status: 409 },
-      );
-    }
-
-    const dates = quarterDates(year, quarter);
-    const startsOn = body.starts_on?.trim() || dates.starts_on;
-    const endsOn = body.ends_on?.trim() || dates.ends_on;
-
-    // If activating, set all other cycles to closed first
-    if (activate) {
-      const { error: closeErr } = await admin
-        .from("quarterly_cycles")
-        .update({ status: "closed", updated_at: new Date().toISOString() })
-        .eq("org_id", scope.org.id)
-        .eq("status", "active");
-
-      if (closeErr) throw new Error(closeErr.message);
-    }
-
-    const { data: inserted, error: insertErr } = await admin
+    const { data: newCycle, error: insertErr } = await admin
       .from("quarterly_cycles")
       .insert({
         org_id: scope.org.id,
         year,
         quarter,
+        status: "active",
+        name: `Q${quarter} ${year}`,
         starts_on: startsOn,
         ends_on: endsOn,
-        name: dates.name,
-        status: activate ? "active" : "draft",
         created_by: scope.userId,
       })
-      .select(
-        "id,org_id,year,quarter,starts_on,ends_on,status,name,created_at",
-      )
+      .select("*")
       .single<CycleRow>();
 
-    if (insertErr || !inserted) {
-      throw new Error(insertErr?.message || "Failed to create cycle");
+    if (insertErr) throw new Error(insertErr.message);
+    return NextResponse.json({ ok: true, cycle: newCycle });
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "Failed to create cycle";
+    return NextResponse.json({ ok: false, error: msg }, { status: 400 });
+  }
+}
+
+export async function PATCH(req: NextRequest, ctx: Ctx<{ slug: string }>) {
+  try {
+    const { slug } = await ctx.params;
+    const scope = await requireAccessScope(req, slug);
+
+    if (scope.role !== "owner" && scope.role !== "admin") {
+      return NextResponse.json({ ok: false, error: "Only owners and admins can update cycles" }, { status: 403 });
     }
 
-    return NextResponse.json({
-      ok: true,
-      cycle: inserted,
-    });
-  } catch (error: unknown) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error:
-          error instanceof Error ? error.message : "Failed to create cycle",
-      },
-      { status: 400 },
-    );
+    const admin = supabaseAdmin();
+    const body = (await req.json()) as { cycleId?: string; status?: string };
+    const cycleId = String(body.cycleId ?? "").trim();
+    const newStatus = String(body.status ?? "").trim();
+
+    if (!cycleId) return NextResponse.json({ ok: false, error: "cycleId is required" }, { status: 400 });
+    if (!["active", "completed", "closed"].includes(newStatus)) {
+      return NextResponse.json({ ok: false, error: "Invalid status" }, { status: 400 });
+    }
+
+    if (newStatus === "active") {
+      await admin
+        .from("quarterly_cycles")
+        .update({ status: "completed", updated_at: new Date().toISOString() })
+        .eq("org_id", scope.org.id)
+        .eq("status", "active");
+    }
+
+    const { error } = await admin
+      .from("quarterly_cycles")
+      .update({ status: newStatus, updated_at: new Date().toISOString() })
+      .eq("id", cycleId)
+      .eq("org_id", scope.org.id);
+
+    if (error) throw new Error(error.message);
+    return NextResponse.json({ ok: true, status: newStatus });
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "Failed to update cycle";
+    return NextResponse.json({ ok: false, error: msg }, { status: 400 });
   }
 }

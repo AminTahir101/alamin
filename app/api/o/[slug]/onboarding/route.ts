@@ -2,11 +2,6 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import {
-  inviteOrAddMembers,
-  summarizeOutcomes,
-  type Role as InviteRole,
-} from "@/lib/server/invites";
 
 export const runtime = "nodejs";
 
@@ -21,6 +16,7 @@ type OnboardingBody = {
   orgSlug: string;
   year: number;
   quarter: number;
+  mode?: "revisit" | "new-cycle";
   departments: Array<{ name: string }>;
   kpis: Array<{
     title: string;
@@ -246,6 +242,64 @@ async function findUserByEmail(
   return null;
 }
 
+async function inviteUsersByEmail(args: {
+  supabaseAdmin: SupabaseClient;
+  emails: string[];
+  redirectTo: string;
+  companyName: string;
+  orgSlug: string;
+  invitedByUserId: string;
+}) {
+  const emails = Array.from(
+    new Set(args.emails.map((e) => cleanEmail(e)).filter(Boolean))
+  );
+
+  const invited: string[] = [];
+  const skipped_existing: string[] = [];
+  const failed: Array<{ email: string; error: string }> = [];
+
+  for (const email of emails) {
+    try {
+      const existing = await findUserByEmail(args.supabaseAdmin, email);
+
+      if (existing) {
+        skipped_existing.push(email);
+        continue;
+      }
+
+      const result = await args.supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+        redirectTo: args.redirectTo,
+        data: {
+          org_slug: args.orgSlug,
+          company_name: args.companyName,
+          invited_by: args.invitedByUserId,
+        },
+      });
+
+      if (result.error) {
+        failed.push({
+          email,
+          error: result.error.message,
+        });
+        continue;
+      }
+
+      invited.push(email);
+    } catch (error: unknown) {
+      failed.push({
+        email,
+        error: error instanceof Error ? error.message : "Unknown invite error",
+      });
+    }
+  }
+
+  return {
+    invited,
+    skipped_existing,
+    failed,
+  };
+}
+
 export async function POST(
   req: NextRequest,
   context: { params: Promise<{ slug: string }> }
@@ -259,6 +313,8 @@ export async function POST(
     }
 
     const body = (await req.json()) as OnboardingBody;
+
+    const isRevisitMode = body.mode === "revisit" || body.mode === "new-cycle";
 
     const companyName = cleanText(body.companyName);
     const bodySlug = normalizeSlug(body.orgSlug);
@@ -360,12 +416,13 @@ export async function POST(
       Array.isArray(body.departments) ? body.departments.map((d) => cleanText(d.name)) : []
     );
 
-    if (!departmentNames.length) {
+    if (!isRevisitMode && !departmentNames.length) {
       return json({ ok: false, error: "At least one department is required" }, 400);
     }
 
     const kpis = Array.isArray(body.kpis) ? body.kpis : [];
 
+    if (!isRevisitMode) {
     for (const kpi of kpis) {
       const title = cleanText(kpi.title);
       const departmentName = cleanText(kpi.departmentName);
@@ -397,6 +454,7 @@ export async function POST(
         return json({ ok: false, error: `KPI "${title}" has invalid target/current values` }, 400);
       }
     }
+    } // end if (!isRevisitMode)
 
     const { starts_on, ends_on, name: cycleName } = quarterDates(year, quarter);
 
@@ -557,6 +615,16 @@ export async function POST(
     let cycleId = existingCycle?.id ?? "";
 
     if (!existingCycle) {
+      // Close any currently-active cycle for this org before creating a new
+      // one. The unique constraint uq_quarterly_cycles_one_active_per_org
+      // enforces one active cycle per org, so we must deactivate the old one
+      // first to avoid a duplicate key violation.
+      await supabaseAdmin
+        .from("quarterly_cycles")
+        .update({ status: "completed", updated_at: new Date().toISOString() })
+        .eq("org_id", orgId)
+        .eq("status", "active");
+
       const { data: insertedCycle, error: insertCycleError } = await supabaseAdmin
         .from("quarterly_cycles")
         .insert({
@@ -631,6 +699,8 @@ export async function POST(
       (existingDepartments ?? []).map((d) => [d.name.toLowerCase(), d])
     );
 
+    // In revisit mode, skip creating new departments — use existing ones only
+    if (!isRevisitMode) {
     const missingDepartments = departmentNames.filter(
       (name) => !existingDepartmentMap.has(name.toLowerCase())
     );
@@ -658,6 +728,7 @@ export async function POST(
         );
       }
     }
+    } // end if (!isRevisitMode) — department creation
 
     const { data: allDepartments, error: allDepartmentsError } = await supabaseAdmin
       .from("departments")
@@ -681,6 +752,7 @@ export async function POST(
     );
 
     const orgAiProfilePayload = {
+      company_name: companyName,
       industry: company.industry || null,
       sub_industry: null,
       country: company.country || "Saudi Arabia",
@@ -735,6 +807,9 @@ export async function POST(
 
     const departmentAiRows: Array<Record<string, unknown>> = [];
 
+    // In revisit mode, update department AI profiles with new strategy but
+    // preserve existing head assignments. In normal mode, write everything.
+    if (!isRevisitMode) {
     for (const department of allDepartments ?? []) {
       const head = departmentHeadMap.get(department.name.toLowerCase());
       const existingAuthUser = head?.headEmail
@@ -771,6 +846,29 @@ export async function POST(
         created_by: createdBy,
       });
     }
+    } else {
+      // Revisit mode: only update strategy-related fields, preserve heads
+      for (const department of allDepartments ?? []) {
+        departmentAiRows.push({
+          org_id: orgId,
+          department_id: department.id,
+          department_name: department.name,
+          strategic_role: aiSetup.mainStrategy
+            ? `Supports company strategy: ${aiSetup.mainStrategy}`
+            : null,
+          ai_context_text: buildDepartmentAiContextText({
+            companyName,
+            industry: company.industry || "",
+            country: company.country || "Saudi Arabia",
+            employeeCount: company.employeeCount,
+            strategy: aiSetup.mainStrategy || "",
+            departmentName: department.name,
+            departmentHeadName: "",
+            departmentHeadEmail: "",
+          }),
+        });
+      }
+    }
 
     if (departmentAiRows.length > 0) {
       const { error: departmentAiError } = await supabaseAdmin
@@ -789,7 +887,8 @@ export async function POST(
       }
     }
 
-    if (kpis.length > 0) {
+    // In revisit mode, skip KPI creation — existing KPIs are preserved
+    if (!isRevisitMode && kpis.length > 0) {
       const departmentIds = Array.from(
         new Set(
           kpis
@@ -938,46 +1037,48 @@ export async function POST(
       }
     }
 
-    const appBaseUrl = getAppBaseUrl(req);
-    const inviteRedirectTo = `${appBaseUrl}/accept-invite`;
-
-    // Build invite requests for department heads only. The owner (person
-    // filling out onboarding) already has their `owner` membership created
-    // earlier in this route and doesn't need an invite email.
-    const inviteRequests: Array<{
-      email: string;
-      role: InviteRole;
-      departmentId: string | null;
-    }> = [];
-
-    const ownerEmailForSkip = cleanEmail(personal.email);
-
-    for (const head of aiSetup.departmentHeads) {
-      const headEmail = cleanEmail(head.headEmail);
-      if (!headEmail) continue;
-      if (headEmail === ownerEmailForSkip) continue; // don't invite the owner
-
-      const departmentId = departmentMap.get(
-        head.departmentName.toLowerCase(),
-      );
-      if (!departmentId) continue;
-
-      inviteRequests.push({
-        email: headEmail,
-        role: "dept_head",
-        departmentId,
+    // In revisit mode, skip inviting department heads — just return success
+    if (isRevisitMode) {
+      return json({
+        ok: true,
+        org: {
+          id: orgId,
+          slug: orgSlug,
+          name: companyName,
+        },
+        cycle: {
+          id: cycleId,
+          year,
+          quarter,
+          name: cycleName,
+        },
+        mode: body.mode,
+        note: "Revisit mode: updated cycle, strategy, and org profile. Departments and KPIs preserved.",
       });
     }
 
-    const outcomes = await inviteOrAddMembers(supabaseAdmin, inviteRequests, {
-      orgId,
-      orgSlug,
-      orgName: companyName,
-      invitedBy: createdBy,
-      redirectTo: inviteRedirectTo,
-    });
+    const appBaseUrl = getAppBaseUrl(req);
+    const inviteRedirectTo = `${appBaseUrl}/auth`;
 
-    const inviteSummary = summarizeOutcomes(outcomes);
+    const inviteTargets = Array.from(
+      new Set(
+        [
+          personal.email,
+          ...aiSetup.departmentHeads.map((h) => cleanEmail(h.headEmail)),
+        ]
+          .map((email) => cleanEmail(email))
+          .filter(Boolean)
+      )
+    );
+
+    const inviteResults = await inviteUsersByEmail({
+      supabaseAdmin,
+      emails: inviteTargets,
+      redirectTo: inviteRedirectTo,
+      companyName,
+      orgSlug,
+      invitedByUserId: createdBy,
+    });
 
     return json({
       ok: true,
@@ -1001,10 +1102,9 @@ export async function POST(
       },
       invites: {
         redirect_to: inviteRedirectTo,
-        invited: inviteSummary.invited,
-        existing_added: inviteSummary.existing_added,
-        existing_member: inviteSummary.existing_member,
-        failed: inviteSummary.failed,
+        invited: inviteResults.invited,
+        skipped_existing: inviteResults.skipped_existing,
+        failed: inviteResults.failed,
       },
       persisted: {
         personal,
@@ -1015,7 +1115,7 @@ export async function POST(
         },
       },
       note:
-        "Onboarding persists company setup, AI context profiles, and creates memberships + sends invites for department heads.",
+        "Onboarding persists company setup, AI context profiles, and sends Supabase invites to new users only.",
     });
   } catch (err: unknown) {
     return json(
