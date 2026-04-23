@@ -44,8 +44,9 @@ async function extractText(buffer: Buffer, mimeType: string, fileName: string): 
 
   if (mimeType === "application/pdf") {
     try {
-      const pdfParse = await import("pdf-parse");
-      const result = await pdfParse.default(buffer);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const pdfParse = await import("pdf-parse") as any;
+      const result = await (pdfParse.default ?? pdfParse)(buffer) as { text: string };
       const text = result.text?.slice(0, 3000) ?? "";
       return `File: ${fileName}\n${text}${(result.text?.length ?? 0) > 3000 ? "\n... (truncated)" : ""}`;
     } catch {
