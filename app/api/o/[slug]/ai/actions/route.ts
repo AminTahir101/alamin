@@ -28,7 +28,8 @@ type ActionType =
   | "generate_jtbd"
   | "create_tasks"
   | "rewrite_kpi"
-  | "diagnose_underperformance";
+  | "diagnose_underperformance"
+  | "update_kpi_value";
 
 type ActionBody = {
   action?: ActionType;
@@ -71,9 +72,9 @@ function requireString(value: unknown, label: string) {
 function ensureScopeForWork(action: ActionType, role: string) {
   if (action === "diagnose_underperformance") return;
 
-  if (action === "rewrite_kpi") {
+  if (action === "rewrite_kpi" || action === "update_kpi_value") {
     if (!canManageKpis(role)) {
-      throw new Error("You do not have permission to rewrite KPIs");
+      throw new Error("You do not have permission to manage KPIs");
     }
     return;
   }
@@ -109,6 +110,11 @@ function getActionMeta(action: ActionType) {
       return {
         label: "Diagnose underperformance",
         description: "Analyze performance issues and return operational recommendations without changing records.",
+      };
+    case "update_kpi_value":
+      return {
+        label: "Update KPI Value",
+        description: "Suggest and commit an updated current value for a KPI based on latest data.",
       };
   }
 }
@@ -153,30 +159,16 @@ function getJsonSchema(action: ActionType) {
                     kpi_id: { type: ["string", "null"] },
                   },
                   required: [
-                    "title",
-                    "metric_name",
-                    "metric_type",
-                    "unit",
-                    "start_value",
-                    "current_value",
-                    "target_value",
-                    "status",
-                    "progress",
-                    "owner_user_id",
-                    "kpi_id",
+                    "title", "metric_name", "metric_type", "unit",
+                    "start_value", "current_value", "target_value",
+                    "status", "progress", "owner_user_id", "kpi_id",
                   ],
                 },
               },
             },
             required: [
-              "objective_id",
-              "title",
-              "description",
-              "department_id",
-              "owner_user_id",
-              "status",
-              "progress",
-              "key_results",
+              "objective_id", "title", "description", "department_id",
+              "owner_user_id", "status", "progress", "key_results",
             ],
           },
         },
@@ -208,14 +200,8 @@ function getJsonSchema(action: ActionType) {
               status: { type: "string" },
             },
             required: [
-              "title",
-              "description",
-              "department_id",
-              "objective_id",
-              "okr_id",
-              "key_result_id",
-              "owner_user_id",
-              "status",
+              "title", "description", "department_id", "objective_id",
+              "okr_id", "key_result_id", "owner_user_id", "status",
             ],
           },
           tasks: {
@@ -237,17 +223,9 @@ function getJsonSchema(action: ActionType) {
                 due_date: { type: ["string", "null"] },
               },
               required: [
-                "title",
-                "description",
-                "department_id",
-                "objective_id",
-                "okr_id",
-                "key_result_id",
-                "kpi_id",
-                "assigned_to_user_id",
-                "status",
-                "priority",
-                "due_date",
+                "title", "description", "department_id", "objective_id",
+                "okr_id", "key_result_id", "kpi_id", "assigned_to_user_id",
+                "status", "priority", "due_date",
               ],
             },
           },
@@ -280,14 +258,8 @@ function getJsonSchema(action: ActionType) {
               status: { type: "string" },
             },
             required: [
-              "title",
-              "description",
-              "department_id",
-              "objective_id",
-              "okr_id",
-              "key_result_id",
-              "owner_user_id",
-              "status",
+              "title", "description", "department_id", "objective_id",
+              "okr_id", "key_result_id", "owner_user_id", "status",
             ],
           },
           tasks: {
@@ -309,17 +281,9 @@ function getJsonSchema(action: ActionType) {
                 due_date: { type: ["string", "null"] },
               },
               required: [
-                "title",
-                "description",
-                "department_id",
-                "objective_id",
-                "okr_id",
-                "key_result_id",
-                "kpi_id",
-                "assigned_to_user_id",
-                "status",
-                "priority",
-                "due_date",
+                "title", "description", "department_id", "objective_id",
+                "okr_id", "key_result_id", "kpi_id", "assigned_to_user_id",
+                "status", "priority", "due_date",
               ],
             },
           },
@@ -359,19 +323,9 @@ function getJsonSchema(action: ActionType) {
               formula: { type: ["string", "null"] },
             },
             required: [
-              "title",
-              "description",
-              "department_id",
-              "owner_user_id",
-              "current_value",
-              "target_value",
-              "weight",
-              "direction",
-              "unit",
-              "measurement_type",
-              "frequency",
-              "baseline_value",
-              "formula",
+              "title", "description", "department_id", "owner_user_id",
+              "current_value", "target_value", "weight", "direction",
+              "unit", "measurement_type", "frequency", "baseline_value", "formula",
             ],
           },
           history_note: { type: "string" },
@@ -381,6 +335,31 @@ function getJsonSchema(action: ActionType) {
     };
   }
 
+  if (action === "update_kpi_value") {
+    return {
+      name: "update_kpi_value_action",
+      strict: true,
+      schema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          summary: { type: "string" },
+          kpi_id: { type: "string" },
+          kpi_title: { type: "string" },
+          current_value: { type: "number" },
+          target_value: { type: "number" },
+          rationale: { type: "string" },
+          history_note: { type: "string" },
+        },
+        required: [
+          "summary", "kpi_id", "kpi_title",
+          "current_value", "target_value", "rationale", "history_note",
+        ],
+      },
+    };
+  }
+
+  // diagnose_underperformance
   return {
     name: "diagnose_underperformance_action",
     strict: true,
@@ -408,7 +387,11 @@ function getJsonSchema(action: ActionType) {
   };
 }
 
-async function callStructuredActionModel(action: ActionType, prompt: string, context: AiWorkspaceContext) {
+async function callStructuredActionModel(
+  action: ActionType,
+  prompt: string,
+  context: AiWorkspaceContext
+) {
   const actionMeta = getActionMeta(action);
   const schema = getJsonSchema(action);
   const companyContext = buildWorkspaceContextText(context);
@@ -434,6 +417,7 @@ Rules:
 - For generate_jtbd and create_tasks, always create 2 to 8 tasks.
 - For rewrite_kpi, prefer updating an existing KPI when the prompt clearly refers to one.
 - For diagnose_underperformance, do not propose database writes directly. Return analysis only.
+- For update_kpi_value, identify the KPI from the prompt, set the new current_value from the data the user provides, and keep target_value from the existing KPI unless the user specifies a new one.
 
 COMPANY CONTEXT
 ${companyContext}
@@ -451,14 +435,8 @@ ${referenceData}
     body: JSON.stringify({
       model: process.env.AI_MODEL?.trim() || "gpt-4.1-mini",
       messages: [
-        {
-          role: "developer",
-          content: developerPrompt,
-        },
-        {
-          role: "user",
-          content: prompt,
-        },
+        { role: "developer", content: developerPrompt },
+        { role: "user", content: prompt },
       ],
       response_format: {
         type: "json_schema",
@@ -474,10 +452,7 @@ ${referenceData}
 
   const payload = (await response.json()) as ChatCompletionResponse;
   const content = payload.choices?.[0]?.message?.content;
-
-  if (!content) {
-    throw new Error("Structured AI action returned no content");
-  }
+  if (!content) throw new Error("Structured AI action returned no content");
 
   return JSON.parse(content) as Record<string, unknown>;
 }
@@ -507,19 +482,12 @@ function resolveByIdOrLabel(
 
 function getSafeDepartmentId(context: AiWorkspaceContext, raw: unknown) {
   const requested = safeString(raw) || null;
-
-  if (context.scope.mode !== "org") {
-    return context.scope.departmentId;
-  }
-
+  if (context.scope.mode !== "org") return context.scope.departmentId;
   if (!requested) return null;
-
-  const resolved = resolveByIdOrLabel(
+  return resolveByIdOrLabel(
     context.departments.map((row) => ({ id: row.id, label: row.name })),
     requested
-  );
-
-  return resolved ?? null;
+  ) ?? null;
 }
 
 function getSafeObjectiveId(context: AiWorkspaceContext, raw: unknown) {
@@ -562,34 +530,16 @@ function getSafeMemberId(context: AiWorkspaceContext, raw: unknown) {
 
 function buildPreviewLabels(context: AiWorkspaceContext): PreviewLabels {
   return {
-    departments: context.departments.map((row) => ({
-      id: row.id,
-      label: row.name,
-    })),
+    departments: context.departments.map((row) => ({ id: row.id, label: row.name })),
     members: context.members.map((row) => ({
       id: row.userId,
       label: context.memberLabelMap.get(row.userId) ?? row.userId,
     })),
-    objectives: context.objectives.map((row) => ({
-      id: row.id,
-      label: row.title,
-    })),
-    okrs: context.okrs.map((row) => ({
-      id: row.id,
-      label: row.title,
-    })),
-    keyResults: context.keyResults.map((row) => ({
-      id: row.id,
-      label: row.title,
-    })),
-    kpis: context.kpis.map((row) => ({
-      id: row.id,
-      label: row.title,
-    })),
-    jtbdClusters: context.jtbdClusters.map((row) => ({
-      id: row.id,
-      label: row.title,
-    })),
+    objectives: context.objectives.map((row) => ({ id: row.id, label: row.title })),
+    okrs: context.okrs.map((row) => ({ id: row.id, label: row.title })),
+    keyResults: context.keyResults.map((row) => ({ id: row.id, label: row.title })),
+    kpis: context.kpis.map((row) => ({ id: row.id, label: row.title })),
+    jtbdClusters: context.jtbdClusters.map((row) => ({ id: row.id, label: row.title })),
   };
 }
 
@@ -604,7 +554,6 @@ async function logAiGeneration(params: {
   confidenceScore?: number | null;
 }) {
   const admin = supabaseAdmin();
-
   try {
     const { error } = await admin.from("ai_generations").insert({
       org_id: params.context.scope.org.id,
@@ -613,19 +562,13 @@ async function logAiGeneration(params: {
       layer: "mach3",
       entity_type: params.entityType,
       entity_id: params.entityId ?? null,
-      input_payload: {
-        action: params.action,
-        prompt: params.prompt,
-      },
+      input_payload: { action: params.action, prompt: params.prompt },
       output_payload: params.outputPayload,
       status: "generated",
       confidence_score: params.confidenceScore ?? null,
       created_by: params.context.scope.userId,
     });
-
-    if (error) {
-      console.error("Failed to log ai_generations:", error.message);
-    }
+    if (error) console.error("Failed to log ai_generations:", error.message);
   } catch (error) {
     console.error("Failed to log ai_generations:", error);
   }
@@ -653,10 +596,7 @@ async function handleCreateOkr(
   actionJson: Record<string, unknown>
 ): Promise<ActionResult> {
   const admin = supabaseAdmin();
-
-  if (!context.cycle) {
-    throw new Error("No active cycle found");
-  }
+  if (!context.cycle) throw new Error("No active cycle found");
 
   const okrRoot = actionJson.okr as Record<string, unknown> | undefined;
   if (!okrRoot) throw new Error("AI action did not return an OKR payload");
@@ -704,7 +644,6 @@ async function handleCreateOkr(
       const row = item as Record<string, unknown>;
       const krTitle = safeString(row.title);
       if (!krTitle) return null;
-
       return {
         org_id: context.scope.org.id,
         cycle_id: context.cycle!.id,
@@ -739,12 +678,7 @@ async function handleCreateOkr(
     entity: "okr",
     summary: safeString(actionJson.summary) || "AI created a new OKR.",
     message: `Created OKR "${title}" with ${krRows.length} key result${krRows.length === 1 ? "" : "s"}.`,
-    created: {
-      okrId: insertedOkr.id,
-      title,
-      departmentId,
-      objectiveId,
-    },
+    created: { okrId: insertedOkr.id, title, departmentId, objectiveId },
   };
 }
 
@@ -754,10 +688,7 @@ async function createClusterAndTasks(
   actionName: "generate_jtbd" | "create_tasks"
 ): Promise<ActionResult> {
   const admin = supabaseAdmin();
-
-  if (!context.cycle) {
-    throw new Error("No active cycle found");
-  }
+  if (!context.cycle) throw new Error("No active cycle found");
 
   const cluster = actionJson.cluster as Record<string, unknown> | undefined;
   if (!cluster) throw new Error("AI action did not return a cluster payload");
@@ -802,7 +733,6 @@ async function createClusterAndTasks(
       const row = item as Record<string, unknown>;
       const title = safeString(row.title);
       if (!title) return null;
-
       return {
         org_id: context.scope.org.id,
         cycle_id: context.cycle!.id,
@@ -836,9 +766,7 @@ async function createClusterAndTasks(
     entity: actionName === "generate_jtbd" ? "jtbd" : "tasks",
     summary:
       safeString(actionJson.summary) ||
-      (actionName === "generate_jtbd"
-        ? "AI generated a JTBD cluster."
-        : "AI created execution tasks."),
+      (actionName === "generate_jtbd" ? "AI generated a JTBD cluster." : "AI created execution tasks."),
     message: `Created cluster "${clusterTitle}" and ${insertTasks.length} task${insertTasks.length === 1 ? "" : "s"}.`,
     created: {
       clusterId: insertedCluster.id,
@@ -857,10 +785,7 @@ async function handleRewriteKpi(
   actionJson: Record<string, unknown>
 ): Promise<ActionResult> {
   const admin = supabaseAdmin();
-
-  if (!context.cycle) {
-    throw new Error("No active cycle found");
-  }
+  if (!context.cycle) throw new Error("No active cycle found");
 
   const kpiRoot = actionJson.kpi as Record<string, unknown> | undefined;
   if (!kpiRoot) throw new Error("AI action did not return a KPI payload");
@@ -871,9 +796,7 @@ async function handleRewriteKpi(
   const title = requireString(kpiRoot.title, "KPI title");
   const description = safeString(kpiRoot.description) || null;
   const departmentId = getSafeDepartmentId(context, kpiRoot.department_id);
-  if (!departmentId) {
-    throw new Error("AI action could not resolve a valid department_id for the KPI");
-  }
+  if (!departmentId) throw new Error("AI action could not resolve a valid department_id for the KPI");
 
   const ownerUserId = getSafeMemberId(context, kpiRoot.owner_user_id);
   const currentValue = safeNumber(kpiRoot.current_value) ?? 0;
@@ -894,84 +817,99 @@ async function handleRewriteKpi(
     const { error: updateErr } = await admin
       .from("kpis")
       .update({
-        title,
-        description,
-        department_id: departmentId,
-        owner_user_id: ownerUserId,
-        current_value: currentValue,
-        target_value: targetValue,
-        weight,
-        direction,
-        unit,
-        measurement_type: measurementType,
-        frequency,
-        baseline_value: baselineValue,
-        formula,
-        source: "ai",
+        title, description, department_id: departmentId, owner_user_id: ownerUserId,
+        current_value: currentValue, target_value: targetValue, weight, direction,
+        unit, measurement_type: measurementType, frequency, baseline_value: baselineValue,
+        formula, source: "ai",
       })
       .eq("id", requestedExistingId)
       .eq("org_id", context.scope.org.id);
-
     if (updateErr) throw new Error(updateErr.message);
 
     await insertKpiHistory(admin, {
-      org_id: context.scope.org.id,
-      cycle_id: context.cycle.id,
-      kpi_id: requestedExistingId,
-      current_value: currentValue,
-      target_value: targetValue,
-      source: "ai",
-      notes: historyNote,
-      recorded_by: context.scope.userId,
+      org_id: context.scope.org.id, cycle_id: context.cycle.id,
+      kpi_id: requestedExistingId, current_value: currentValue, target_value: targetValue,
+      source: "ai", notes: historyNote, recorded_by: context.scope.userId,
     });
 
     return {
-      wrote: true,
-      entity: "kpi",
+      wrote: true, entity: "kpi",
       summary: safeString(actionJson.summary) || "AI rewrote an existing KPI.",
       message: `Updated KPI "${title}".`,
-      created: {
-        kpiId: requestedExistingId,
-        title,
-        mode: "updated",
-        departmentId,
-      },
+      created: { kpiId: requestedExistingId, title, mode: "updated", departmentId },
     };
   }
 
   const { data: inserted, error: insertErr } = await admin
     .from("kpis")
     .insert({
-      org_id: context.scope.org.id,
-      cycle_id: context.cycle.id,
-      department_id: departmentId,
-      title,
-      description,
-      owner_user_id: ownerUserId,
-      weight,
-      measurement_type: measurementType,
-      target_value: targetValue,
-      current_value: currentValue,
-      created_by: context.scope.userId,
-      is_active: true,
-      direction,
-      unit,
-      frequency,
-      baseline_value: baselineValue,
-      formula,
-      source: "ai",
+      org_id: context.scope.org.id, cycle_id: context.cycle.id,
+      department_id: departmentId, title, description, owner_user_id: ownerUserId,
+      weight, measurement_type: measurementType, target_value: targetValue,
+      current_value: currentValue, created_by: context.scope.userId, is_active: true,
+      direction, unit, frequency, baseline_value: baselineValue, formula, source: "ai",
     })
     .select("id")
     .single<{ id: string }>();
-
   if (insertErr) throw new Error(insertErr.message);
+
+  await insertKpiHistory(admin, {
+    org_id: context.scope.org.id, cycle_id: context.cycle.id,
+    kpi_id: inserted.id, current_value: currentValue, target_value: targetValue,
+    source: "ai", notes: historyNote, recorded_by: context.scope.userId,
+  });
+
+  return {
+    wrote: true, entity: "kpi",
+    summary: safeString(actionJson.summary) || "AI created a rewritten KPI.",
+    message: `Created KPI "${title}".`,
+    created: { kpiId: inserted.id, title, mode: "created", departmentId },
+  };
+}
+
+async function handleUpdateKpiValue(
+  context: AiWorkspaceContext,
+  actionJson: Record<string, unknown>
+): Promise<ActionResult> {
+  const admin = supabaseAdmin();
+  if (!context.cycle) throw new Error("No active cycle found");
+
+  const kpiId = getSafeKpiId(context, actionJson.kpi_id);
+  if (!kpiId) {
+    throw new Error(
+      `Could not resolve KPI. Received: "${safeString(actionJson.kpi_id) || "empty"}". ` +
+      `Available KPIs: ${context.kpis.map((k) => k.title).slice(0, 5).join(", ")}`
+    );
+  }
+
+  const newCurrentValue = safeNumber(actionJson.current_value);
+  if (newCurrentValue === null) throw new Error("current_value is required");
+
+  const newTargetValue = safeNumber(actionJson.target_value);
+  const historyNote = safeString(actionJson.history_note) || "AI updated KPI value";
+  const rationale = safeString(actionJson.rationale);
+  const kpiTitle = safeString(actionJson.kpi_title) || kpiId;
+
+  const existingKpi = context.kpis.find((k) => k.id === kpiId) as Record<string, unknown> | undefined;
+  const resolvedTargetValue = newTargetValue ?? (safeNumber(existingKpi?.target_value) ?? 0);
+
+  const { error: updateErr } = await admin
+    .from("kpis")
+    .update({
+      current_value: newCurrentValue,
+      ...(newTargetValue !== null ? { target_value: newTargetValue } : {}),
+      source: "ai",
+    })
+    .eq("id", kpiId)
+    .eq("org_id", context.scope.org.id);
+  if (updateErr) throw new Error(updateErr.message);
 
   await insertKpiHistory(admin, {
     org_id: context.scope.org.id,
     cycle_id: context.cycle.id,
-    kpi_id: inserted.id,
-    current_value: currentValue,
-    target_value: targetValue,
+    kpi_id: kpiId,
+    current_value: newCurrentValue,
+    target_value: resolvedTargetValue,
     source: "ai",
     notes: historyNote,
     recorded_by: context.scope.userId,
@@ -980,14 +918,9 @@ async function handleRewriteKpi(
   return {
     wrote: true,
     entity: "kpi",
-    summary: safeString(actionJson.summary) || "AI created a rewritten KPI.",
-    message: `Created KPI "${title}".`,
-    created: {
-      kpiId: inserted.id,
-      title,
-      mode: "created",
-      departmentId,
-    },
+    summary: safeString(actionJson.summary) || `KPI "${kpiTitle}" updated to ${newCurrentValue}.`,
+    message: `Updated "${kpiTitle}" current value to ${newCurrentValue}. ${rationale}`.trim(),
+    created: { kpiId, kpiTitle, newCurrentValue, newTargetValue, rationale },
   };
 }
 
@@ -995,47 +928,25 @@ function handleDiagnose(actionJson: Record<string, unknown>): ActionResult {
   const summary = safeString(actionJson.summary) || "Diagnosis complete.";
   const diagnosis = safeString(actionJson.diagnosis) || "No diagnosis returned.";
   const causes = Array.isArray(actionJson.causes)
-    ? actionJson.causes.map((row) => safeString(row)).filter(Boolean)
-    : [];
+    ? actionJson.causes.map((row) => safeString(row)).filter(Boolean) : [];
   const actions = Array.isArray(actionJson.actions)
-    ? actionJson.actions.map((row) => safeString(row)).filter(Boolean)
-    : [];
-
-  const updatesRoot =
-    (actionJson.suggested_updates as Record<string, unknown> | undefined) ?? {};
-
-  const kpis = Array.isArray(updatesRoot.kpis)
-    ? updatesRoot.kpis.map((row) => safeString(row)).filter(Boolean)
-    : [];
-  const okrs = Array.isArray(updatesRoot.okrs)
-    ? updatesRoot.okrs.map((row) => safeString(row)).filter(Boolean)
-    : [];
-  const tasks = Array.isArray(updatesRoot.tasks)
-    ? updatesRoot.tasks.map((row) => safeString(row)).filter(Boolean)
-    : [];
+    ? actionJson.actions.map((row) => safeString(row)).filter(Boolean) : [];
+  const updatesRoot = (actionJson.suggested_updates as Record<string, unknown> | undefined) ?? {};
+  const kpis = Array.isArray(updatesRoot.kpis) ? updatesRoot.kpis.map((row) => safeString(row)).filter(Boolean) : [];
+  const okrs = Array.isArray(updatesRoot.okrs) ? updatesRoot.okrs.map((row) => safeString(row)).filter(Boolean) : [];
+  const tasks = Array.isArray(updatesRoot.tasks) ? updatesRoot.tasks.map((row) => safeString(row)).filter(Boolean) : [];
 
   const message = [
-    summary,
-    "",
-    "Diagnosis",
-    diagnosis,
-    "",
+    summary, "",
+    "Diagnosis", diagnosis, "",
     causes.length ? `Likely causes:\n- ${causes.join("\n- ")}` : "",
     actions.length ? `Recommended actions:\n- ${actions.join("\n- ")}` : "",
     kpis.length ? `Suggested KPI updates:\n- ${kpis.join("\n- ")}` : "",
     okrs.length ? `Suggested OKR updates:\n- ${okrs.join("\n- ")}` : "",
     tasks.length ? `Suggested task updates:\n- ${tasks.join("\n- ")}` : "",
-  ]
-    .filter(Boolean)
-    .join("\n");
+  ].filter(Boolean).join("\n");
 
-  return {
-    wrote: false,
-    entity: "diagnosis",
-    summary,
-    message,
-    created: null,
-  };
+  return { wrote: false, entity: "diagnosis", summary, message, created: null };
 }
 
 function shouldExecute(req: NextRequest) {
@@ -1051,17 +962,9 @@ export async function POST(req: NextRequest, ctx: Ctx<{ slug: string }>) {
     const prompt = safeString(body?.prompt);
     const preview = body?.preview && typeof body.preview === "object" ? body.preview : null;
 
-    if (!slug) {
-      return json({ ok: false, error: "Slug is required" }, 400);
-    }
-
-    if (!action) {
-      return json({ ok: false, error: "Action is required" }, 400);
-    }
-
-    if (!prompt) {
-      return json({ ok: false, error: "Prompt is required" }, 400);
-    }
+    if (!slug) return json({ ok: false, error: "Slug is required" }, 400);
+    if (!action) return json({ ok: false, error: "Action is required" }, 400);
+    if (!prompt) return json({ ok: false, error: "Prompt is required" }, 400);
 
     const context = await loadAiWorkspaceContext(req, slug);
     ensureScopeForWork(action, context.scope.role);
@@ -1071,21 +974,12 @@ export async function POST(req: NextRequest, ctx: Ctx<{ slug: string }>) {
 
     if (!shouldExecute(req)) {
       await logAiGeneration({
-        context,
-        action,
-        prompt,
+        context, action, prompt,
         outputPayload: actionJson,
         entityType: `${action}_preview`,
         departmentId: context.scope.departmentId ?? null,
       });
-
-      return json({
-        ok: true,
-        action,
-        mode: "preview",
-        preview: actionJson,
-        labels: previewLabels,
-      });
+      return json({ ok: true, action, mode: "preview", preview: actionJson, labels: previewLabels });
     }
 
     let result: ActionResult;
@@ -1098,36 +992,27 @@ export async function POST(req: NextRequest, ctx: Ctx<{ slug: string }>) {
       result = await createClusterAndTasks(context, actionJson, "create_tasks");
     } else if (action === "rewrite_kpi") {
       result = await handleRewriteKpi(context, actionJson);
+    } else if (action === "update_kpi_value") {
+      result = await handleUpdateKpiValue(context, actionJson);
     } else {
       result = handleDiagnose(actionJson);
     }
 
     await logAiGeneration({
-      context,
-      action,
-      prompt,
+      context, action, prompt,
       outputPayload: actionJson,
       entityType: result.entity,
       entityId:
-        typeof result.created?.okrId === "string"
-          ? result.created.okrId
-          : typeof result.created?.clusterId === "string"
-          ? result.created.clusterId
-          : typeof result.created?.kpiId === "string"
-          ? result.created.kpiId
-          : null,
+        typeof result.created?.okrId === "string" ? result.created.okrId :
+        typeof result.created?.clusterId === "string" ? result.created.clusterId :
+        typeof result.created?.kpiId === "string" ? result.created.kpiId : null,
       departmentId:
         typeof result.created?.departmentId === "string"
           ? result.created.departmentId
           : context.scope.departmentId ?? null,
     });
 
-    return json({
-      ok: true,
-      action,
-      mode: "executed",
-      ...result,
-    });
+    return json({ ok: true, action, mode: "executed", ...result });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Failed to run AI action";
     return json({ ok: false, error: message }, 400);
