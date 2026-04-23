@@ -1,1216 +1,553 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
-import EmptyState from "@/components/ui/EmptyState";
-import ProgressBar from "@/components/ui/ProgressBar";
-import SectionCard from "@/components/ui/SectionCard";
-import StatusBadge from "@/components/ui/StatusBadge";
 import { supabase } from "@/lib/supabaseClient";
+
 type ChatRole = "user" | "assistant";
+type ChatMessage = { id: string; role: ChatRole; content: string };
+type OrgAiCopilotProps = { slug: string };
+type ActionType = "chat" | "create_okr" | "generate_jtbd" | "create_tasks" | "rewrite_kpi" | "diagnose_underperformance" | "update_kpi_value";
+type SseEvent = { event: string; data: string };
+type ResponseCompletedPayload = { response?: { output?: Array<{ type?: string; role?: string; content?: Array<{ type?: string; text?: string }> }> } };
+type ActionPreviewResponse = { ok?: boolean; error?: string; action?: string; mode?: "preview" | "executed"; preview?: Record<string, unknown>; wrote?: boolean; entity?: string; summary?: string; message?: string; created?: Record<string, unknown> | null };
+type PreviewState = { action: Exclude<ActionType, "chat">; prompt: string; data: Record<string, unknown> };
+type UploadedFile = { id: string; file_name: string; file_type: string; size_bytes: number; created_at: string };
 
-type ChatMessage = {
-  id: string;
-  role: ChatRole;
-  content: string;
-};
-
-type OrgAiCopilotProps = {
-  slug: string;
-};
-
-type ActionType =
-  | "chat"
-  | "create_okr"
-  | "generate_jtbd"
-  | "create_tasks"
-  | "rewrite_kpi"
-  | "diagnose_underperformance";
-
-type SseEvent = {
-  event: string;
-  data: string;
-};
-
-type ResponseCompletedPayload = {
-  response?: {
-    output?: Array<{
-      type?: string;
-      role?: string;
-      content?: Array<{
-        type?: string;
-        text?: string;
-      }>;
-    }>;
-  };
-};
-
-type ActionPreviewResponse = {
-  ok?: boolean;
-  error?: string;
-  action?: string;
-  mode?: "preview" | "executed";
-  preview?: Record<string, unknown>;
-  wrote?: boolean;
-  entity?: string;
-  summary?: string;
-  message?: string;
-  created?: Record<string, unknown> | null;
-};
-
-type PreviewState = {
-  action: Exclude<ActionType, "chat">;
-  prompt: string;
-  data: Record<string, unknown>;
-};
-
-function uid() {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-}
-
-function safeString(value: unknown) {
-  return typeof value === "string" ? value : "";
-}
-
-function asObject(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-function asArray(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [];
-}
-
-function chipClass() {
-  return "rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-2.5 py-1 text-[11px] font-semibold text-[var(--foreground-soft)]";
-}
-
-function labelForAction(action: ActionType) {
-  switch (action) {
-    case "chat":
-      return "Ask Your AI";
-    case "create_okr":
-      return "Create OKR";
-    case "generate_jtbd":
-      return "Generate JTBD";
-    case "create_tasks":
-      return "Create Tasks";
-    case "rewrite_kpi":
-      return "Rewrite KPI";
-    case "diagnose_underperformance":
-      return "Diagnose Underperformance";
-  }
-}
-
-function placeholderForAction(action: ActionType) {
-  switch (action) {
-    case "chat":
-      return "Ask about KPI underperformance, blocked execution, OKR quality, JTBD gaps, weak ownership, or what leadership should do next.";
-    case "create_okr":
-      return "Example: Create a Q2 OKR for Sales to improve qualified pipeline and close rate under the revenue objective.";
-    case "generate_jtbd":
-      return "Example: Generate JTBD for Customer Success to improve onboarding completion and reduce early churn.";
-    case "create_tasks":
-      return "Example: Create execution tasks for the most at-risk KR in the Sales department.";
-    case "rewrite_kpi":
-      return "Example: Rewrite the KPI 'Increase sales' into a measurable KPI with baseline, target, unit, and formula.";
-    case "diagnose_underperformance":
-      return "Example: Diagnose why the company is underperforming this quarter and tell me the biggest blockers.";
-  }
-}
-
-function actionCardClass(active: boolean) {
-  return active
-    ? "border-[var(--border-active)] bg-[var(--foreground)] text-[var(--background)]"
-    : "border-[var(--border)] bg-[var(--card-soft)] text-[var(--foreground)] hover:border-[var(--border-strong)] hover:bg-[var(--card-strong)]";
-}
+function uid() { return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`; }
+function safeString(v: unknown) { return typeof v === "string" ? v : ""; }
+function asObject(v: unknown): Record<string, unknown> | null { return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null; }
+function asArray(v: unknown): unknown[] { return Array.isArray(v) ? v : []; }
 
 function parseSseEvents(chunk: string) {
-  const normalized = chunk.replace(/\r\n/g, "\n");
-  const blocks = normalized.split("\n\n");
-  const completeBlocks = blocks.slice(0, -1);
-  const remainder = blocks[blocks.length - 1] ?? "";
-
+  const blocks = chunk.replace(/\r\n/g, "\n").split("\n\n");
   const events: SseEvent[] = [];
-
-  for (const block of completeBlocks) {
-    const lines = block.split("\n");
-    let event = "";
-    const dataParts: string[] = [];
-
-    for (const line of lines) {
+  for (const block of blocks.slice(0, -1)) {
+    let event = ""; const dp: string[] = [];
+    for (const line of block.split("\n")) {
       if (line.startsWith(":")) continue;
-
-      if (line.startsWith("event:")) {
-        event = line.slice(6).trim();
-        continue;
-      }
-
-      if (line.startsWith("data:")) {
-        dataParts.push(line.slice(5).trim());
-      }
+      if (line.startsWith("event:")) { event = line.slice(6).trim(); continue; }
+      if (line.startsWith("data:")) dp.push(line.slice(5).trim());
     }
-
-    const data = dataParts.join("\n");
-    if (data) {
-      events.push({ event, data });
-    }
+    const data = dp.join("\n");
+    if (data) events.push({ event, data });
   }
-
-  return { events, remainder };
+  return { events, remainder: blocks[blocks.length - 1] ?? "" };
 }
 
-function extractTextFromCompletedEvent(payload: ResponseCompletedPayload): string {
-  const outputs = payload.response?.output ?? [];
-  const parts: string[] = [];
-
-  for (const item of outputs) {
-    if (item.type !== "message") continue;
-
-    for (const content of item.content ?? []) {
-      if (content.type === "output_text" && typeof content.text === "string" && content.text.trim()) {
-        parts.push(content.text);
-      }
-    }
-  }
-
-  return parts.join("\n").trim();
+function extractTextFromCompleted(payload: ResponseCompletedPayload): string {
+  return (payload.response?.output ?? []).flatMap(item => item.type === "message" ? (item.content ?? []).filter(c => c.type === "output_text" && typeof c.text === "string").map(c => c.text!) : []).join("\n").trim();
 }
 
-function tryParseJson(text: string) {
-  try {
-    return JSON.parse(text) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-}
+function tryJson(text: string) { try { return JSON.parse(text) as Record<string, unknown>; } catch { return null; } }
 
-function toneFromStatus(status?: string | null) {
-  const value = String(status ?? "").toLowerCase();
-  if (["active", "on_track", "on track", "completed", "done"].includes(value)) return "success" as const;
-  if (["at_risk", "at risk", "blocked", "high"].includes(value)) return "warning" as const;
-  if (["off_track", "off track", "critical", "cancelled"].includes(value)) return "danger" as const;
-  if (["todo", "in_progress", "in progress", "pending_approval", "draft"].includes(value)) return "info" as const;
-  return "neutral" as const;
-}
-
-const actionCards: Array<{
-  key: ActionType;
-  title: string;
-  description: string;
-}> = [
-  {
-    key: "chat",
-    title: "Ask Your AI",
-    description:
-      "Live grounded answers based on objectives, OKRs, KRs, KPIs, JTBD, tasks, and the active cycle.",
-  },
-  {
-    key: "diagnose_underperformance",
-    title: "Diagnose Underperformance",
-    description: "Find what is weak, what it means, and what should happen next.",
-  },
-  {
-    key: "create_okr",
-    title: "Create OKR",
-    description: "Generate one structured OKR preview before committing it.",
-  },
-  {
-    key: "generate_jtbd",
-    title: "Generate JTBD",
-    description: "Preview a JTBD cluster before saving it into the workspace.",
-  },
-  {
-    key: "create_tasks",
-    title: "Create Tasks",
-    description: "Generate execution tasks tied to a weak area of the business.",
-  },
-  {
-    key: "rewrite_kpi",
-    title: "Rewrite KPI",
-    description: "Turn vague KPIs into measurable ones with clear targets.",
-  },
+const QUICK_ACTIONS: Array<{ key: ActionType; label: string; icon: string }> = [
+  { key: "diagnose_underperformance", label: "Diagnose", icon: "M" },
+  { key: "create_okr", label: "Create OKR", icon: "O" },
+  { key: "generate_jtbd", label: "JTBD", icon: "J" },
+  { key: "create_tasks", label: "Tasks", icon: "T" },
+  { key: "rewrite_kpi", label: "Rewrite KPI", icon: "K" },
+  { key: "update_kpi_value", label: "Update KPI", icon: "U" },
 ];
 
-const starterPrompts: Record<ActionType, string[]> = {
-  chat: [
-    "What is the biggest execution risk this cycle?",
-    "What should leadership fix this week?",
-    "Which KPI is likely creating the most downstream damage?",
-  ],
-  diagnose_underperformance: [
-    "Diagnose why Sales is underperforming this quarter.",
-    "Explain the main reasons our execution is slipping.",
-    "Tell me what is off track and what should be fixed first.",
-  ],
-  create_okr: [
-    "Create an OKR for improving qualified pipeline conversion.",
-    "Create an OKR for reducing onboarding drop-off.",
-    "Create an OKR for raising repeat purchase rate.",
-  ],
-  generate_jtbd: [
-    "Generate JTBD for improving onboarding completion.",
-    "Generate JTBD for fixing lead handoff quality.",
-    "Generate JTBD for raising on-time delivery rate.",
-  ],
-  create_tasks: [
-    "Create tasks for the weakest KPI in Sales.",
-    "Create tasks to improve onboarding completion.",
-    "Create tasks to resolve delayed execution in Operations.",
-  ],
-  rewrite_kpi: [
-    "Rewrite the KPI 'Increase revenue' into a measurable KPI.",
-    "Rewrite 'Improve retention' into a proper KPI.",
-    "Rewrite 'More leads' into a KPI with baseline and target.",
-  ],
+const PLACEHOLDERS: Record<ActionType, string> = {
+  chat: "Ask about performance, blockers, OKR quality, or what to prioritize...",
+  create_okr: "Create a Q2 OKR for Sales to improve qualified pipeline...",
+  generate_jtbd: "Generate JTBD for Customer Success to improve onboarding...",
+  create_tasks: "Create execution tasks for the most at-risk KR in Sales...",
+  rewrite_kpi: "Rewrite 'Increase sales' into a measurable KPI with baseline...",
+  diagnose_underperformance: "Diagnose why the company is underperforming this quarter...",
+  update_kpi_value: "Update the MQL to SQL KPI — we closed 24 leads out of 90 this month...",
 };
+
+const STARTER_PROMPTS = [
+  { label: "Diagnose performance", prompt: "What is the biggest execution risk this cycle?", action: "chat" as ActionType },
+  { label: "Create OKR", prompt: "Create an OKR for improving qualified pipeline conversion.", action: "create_okr" as ActionType },
+  { label: "Generate tasks", prompt: "Create tasks for the weakest KPI in the company.", action: "create_tasks" as ActionType },
+  { label: "Rewrite a KPI", prompt: "Rewrite 'Increase revenue' into a measurable KPI with target.", action: "rewrite_kpi" as ActionType },
+];
+
+function labelForAction(a: ActionType) {
+  return QUICK_ACTIONS.find(m => m.key === a)?.label ?? (a === "chat" ? "Chat" : a);
+}
+
+async function exportPdf(message: ChatMessage, slug: string) {
+  try {
+    const wrapper = document.createElement("div");
+    wrapper.style.cssText = "position:absolute;left:-9999px;top:0;width:900px;background:#fff;padding:40px;font-family:Arial,sans-serif;color:#111;";
+    wrapper.innerHTML = `<div style="border-bottom:2px solid #e5e7eb;padding-bottom:20px;margin-bottom:30px;"><div style="font-size:22px;font-weight:700;">ALAMIN AI</div><div style="font-size:13px;color:#6b7280;">${slug} · ${new Date().toLocaleString()}</div></div><div style="padding:20px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;white-space:pre-wrap;line-height:1.8;font-size:14px;">${message.content.split(/---\s*\nAsk next:/i)[0].trim()}</div>`;
+    document.body.appendChild(wrapper);
+    const canvas = await html2canvas(wrapper, { scale: 2, useCORS: true });
+    document.body.removeChild(wrapper);
+    const pdf = new jsPDF("p", "mm", "a4");
+    pdf.addImage(canvas.toDataURL("image/png"), "PNG", 0, 0, 210, (canvas.height * 210) / canvas.width);
+    pdf.save(`ALAMIN-AI-${Date.now()}.pdf`);
+  } catch { alert("Failed to export PDF."); }
+}
 
 export default function OrgAiCopilot({ slug }: OrgAiCopilotProps) {
   const [action, setAction] = useState<ActionType>("chat");
   const [prompt, setPrompt] = useState("");
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: uid(),
-      role: "assistant",
-      content:
-        "I’m grounded in your company workspace. Ask me to diagnose weak performance, generate OKRs, create JTBD, create tasks, or rewrite KPIs into something measurable.",
-    },
-  ]);
-
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [preview, setPreview] = useState<PreviewState | null>(null);
   const [chatLoading, setChatLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [approveLoading, setApproveLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [files, setFiles] = useState<UploadedFile[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [showFiles, setShowFiles] = useState(false);
 
-  const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const companyFileRef = useRef<HTMLInputElement>(null);
+  const financialFileRef = useRef<HTMLInputElement>(null);
 
-  const activePrompts = useMemo(() => starterPrompts[action], [action]);
+  const isLoading = chatLoading || actionLoading;
+  const isEmpty = messages.length === 0 && !preview;
 
   function scrollToBottom() {
-    requestAnimationFrame(() => {
-      scrollerRef.current?.scrollTo({
-        top: scrollerRef.current.scrollHeight,
-        behavior: "smooth",
-      });
-    });
+    requestAnimationFrame(() => { scrollerRef.current?.scrollTo({ top: scrollerRef.current.scrollHeight, behavior: "smooth" }); });
   }
-async function exportAiResponseToPdf(message: ChatMessage) {
-  try {
-    const wrapper = document.createElement("div");
 
-    wrapper.style.position = "absolute";
-    wrapper.style.left = "-9999px";
-    wrapper.style.top = "0";
-    wrapper.style.width = "900px";
-    wrapper.style.background = "#ffffff";
-    wrapper.style.padding = "40px";
-    wrapper.style.fontFamily = "Arial, sans-serif";
-    wrapper.style.color = "#111827";
-
-    wrapper.innerHTML = `
-      <div style="border-bottom:2px solid #e5e7eb;padding-bottom:20px;margin-bottom:30px;">
-        <div style="display:flex;align-items:center;gap:14px;">
-          <img src="/favicon.jpeg" width="42" height="42" style="border-radius:10px;" />
-          <div>
-            <div style="font-size:26px;font-weight:700;">ALAMIN AI</div>
-            <div style="font-size:13px;color:#6b7280;">Executive Intelligence Export</div>
-          </div>
-        </div>
-      </div>
-
-      <div style="margin-bottom:30px;">
-        <div style="font-size:14px;color:#6b7280;">Generated At</div>
-        <div style="font-size:15px;font-weight:600;">
-          ${new Date().toLocaleString()}
-        </div>
-      </div>
-
-      <div style="margin-bottom:30px;">
-        <div style="font-size:14px;color:#6b7280;">Organization</div>
-        <div style="font-size:15px;font-weight:600;">${slug}</div>
-      </div>
-
-      <div style="margin-bottom:30px;">
-        <div style="font-size:14px;color:#6b7280;">AI Response</div>
-        <div style="
-          margin-top:10px;
-          padding:20px;
-          background:#f9fafb;
-          border:1px solid #e5e7eb;
-          border-radius:14px;
-          white-space:pre-wrap;
-          line-height:1.8;
-          font-size:14px;
-        ">
-          ${message.content}
-        </div>
-      </div>
-
-      <div style="margin-top:50px;font-size:12px;color:#9ca3af;text-align:center;">
-        Generated by ALAMIN Performance Intelligence Platform
-      </div>
-    `;
-
-    document.body.appendChild(wrapper);
-
-    const canvas = await html2canvas(wrapper, {
-      scale: 2,
-      useCORS: true,
-    });
-
-    document.body.removeChild(wrapper);
-
-    const imgData = canvas.toDataURL("image/png");
-
-    const pdf = new jsPDF("p", "mm", "a4");
-
-    const pdfWidth = 210;
-    const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-
-    pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
-
-    pdf.save(`ALAMIN-AI-Export-${Date.now()}.pdf`);
-  } catch (err) {
-    console.error(err);
-    alert("Failed to export PDF.");
+  function autoResize() {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
   }
-}
-  async function getAccessToken() {
+
+  async function getToken() {
     const { data } = await supabase.auth.getSession();
-    const session = data.session;
-    if (!session) {
-      throw new Error("Your session expired. Log in again.");
-    }
-    return session.access_token;
+    if (!data.session) throw new Error("Session expired.");
+    return data.session.access_token;
   }
+
+  const loadFiles = useCallback(async () => {
+    try {
+      const token = await getToken();
+      const res = await fetch(`/api/o/${encodeURIComponent(slug)}/ai/files`, { headers: { Authorization: `Bearer ${token}` } });
+      const data = await res.json() as { ok: boolean; files?: UploadedFile[] };
+      if (data.ok) setFiles(data.files ?? []);
+    } catch { /* silent */ }
+  }, [slug]);
+
+  useEffect(() => { void loadFiles(); }, [loadFiles]);
+
+  async function handleUpload(file: File, fileType: "company_doc" | "financial") {
+    if (file.size > 2 * 1024 * 1024) { setErrorMsg("File exceeds 2 MB"); return; }
+    setUploading(true); setErrorMsg(null);
+    try {
+      const token = await getToken();
+      const form = new FormData();
+      form.append("file", file); form.append("type", fileType);
+      const res = await fetch(`/api/o/${encodeURIComponent(slug)}/ai/files`, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: form });
+      const data = await res.json() as { ok: boolean; error?: string };
+      if (!data.ok) setErrorMsg(data.error ?? "Upload failed");
+      else { await loadFiles(); }
+    } catch { setErrorMsg("Upload failed"); }
+    finally { setUploading(false); }
+  }
+
+  async function handleDeleteFile(id: string) {
+    try {
+      const token = await getToken();
+      await fetch(`/api/o/${encodeURIComponent(slug)}/ai/files`, { method: "DELETE", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+      await loadFiles();
+    } catch { /* silent */ }
+  }
+
+  function fmtBytes(b: number) { return b > 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.round(b / 1024)} KB`; }
 
   async function runChat(inputText: string) {
-    const finalText = inputText.trim();
-    if (!finalText) return;
-
-    setErrorMsg(null);
-    setSuccessMsg(null);
-    setPreview(null);
-    setChatLoading(true);
-
-    const nextMessages: ChatMessage[] = [
-      ...messages,
-      { id: uid(), role: "user", content: finalText },
-      { id: uid(), role: "assistant", content: "" },
-    ];
-
-    setMessages(nextMessages);
-    setPrompt("");
-    scrollToBottom();
-
+    const text = inputText.trim(); if (!text) return;
+    setErrorMsg(null); setSuccessMsg(null); setPreview(null); setChatLoading(true);
+    const nextMessages: ChatMessage[] = [...messages, { id: uid(), role: "user", content: text }, { id: uid(), role: "assistant", content: "" }];
+    setMessages(nextMessages); setPrompt(""); scrollToBottom();
     try {
-      const accessToken = await getAccessToken();
-      const bodyMessages = nextMessages
-        .filter((msg) => !(msg.role === "assistant" && msg.content === ""))
-        .map((msg) => ({
-          role: msg.role,
-          content: msg.content,
-        }));
-
+      const token = await getToken();
       const res = await fetch(`/api/o/${encodeURIComponent(slug)}/ai/chat`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({ messages: bodyMessages }),
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ messages: nextMessages.filter(m => !(m.role === "assistant" && m.content === "")).map(m => ({ role: m.role, content: m.content })) }),
       });
-
-      if (!res.ok || !res.body) {
-        const detail = await res.text().catch(() => "");
-        throw new Error(detail || "Failed to run AI chat");
-      }
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let finalTextFromStream = "";
-
+      if (!res.ok || !res.body) throw new Error(await res.text().catch(() => "") || "Chat failed");
+      const reader = res.body.getReader(); const decoder = new TextDecoder();
+      let buffer = ""; let finalText = "";
       while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
+        const { done, value } = await reader.read(); if (done) break;
         buffer += decoder.decode(value, { stream: true });
-
-        const parsed = parseSseEvents(buffer);
-        buffer = parsed.remainder;
-
-        for (const event of parsed.events) {
-          if (!event.data || event.data === "[DONE]") continue;
-          const parsedData = tryParseJson(event.data);
-          if (!parsedData) continue;
-
-          const eventType = safeString(parsedData.type);
-
-          if (eventType === "response.output_text.delta") {
-            const delta = safeString(parsedData.delta);
-            if (delta) {
-              finalTextFromStream += delta;
-              setMessages((prev) => {
-                const copy = [...prev];
-                const last = copy[copy.length - 1];
-                if (last?.role === "assistant") {
-                  copy[copy.length - 1] = { ...last, content: finalTextFromStream };
-                }
-                return copy;
-              });
-            }
-          }
-
-          if (eventType === "response.completed") {
-            const extracted = extractTextFromCompletedEvent(parsedData as ResponseCompletedPayload);
-            if (extracted) {
-              finalTextFromStream = extracted;
-              setMessages((prev) => {
-                const copy = [...prev];
-                const last = copy[copy.length - 1];
-                if (last?.role === "assistant") {
-                  copy[copy.length - 1] = { ...last, content: extracted };
-                }
-                return copy;
-              });
-            }
-          }
+        const { events, remainder } = parseSseEvents(buffer); buffer = remainder;
+        for (const ev of events) {
+          if (!ev.data || ev.data === "[DONE]") continue;
+          const d = tryJson(ev.data); if (!d) continue;
+          const type = safeString(d.type);
+          if (type === "response.output_text.delta") { const delta = safeString(d.delta); if (delta) { finalText += delta; setMessages(prev => { const c = [...prev]; const last = c[c.length - 1]; if (last?.role === "assistant") c[c.length - 1] = { ...last, content: finalText }; return c; }); } }
+          if (type === "response.completed") { const ex = extractTextFromCompleted(d as ResponseCompletedPayload); if (ex) { finalText = ex; setMessages(prev => { const c = [...prev]; const last = c[c.length - 1]; if (last?.role === "assistant") c[c.length - 1] = { ...last, content: ex }; return c; }); } }
         }
-
         scrollToBottom();
       }
-
-      if (!finalTextFromStream.trim()) {
-        setMessages((prev) => {
-          const copy = [...prev];
-          const last = copy[copy.length - 1];
-          if (last?.role === "assistant") {
-            copy[copy.length - 1] = {
-              ...last,
-              content: "No response was returned. Try again.",
-            };
-          }
-          return copy;
-        });
-      }
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to run AI chat";
-      setErrorMsg(message);
-      setMessages((prev) => {
-        const copy = [...prev];
-        const last = copy[copy.length - 1];
-        if (last?.role === "assistant") {
-          copy[copy.length - 1] = {
-            ...last,
-            content: `AI error: ${message}`,
-          };
-        }
-        return copy;
-      });
-    } finally {
-      setChatLoading(false);
-      scrollToBottom();
-    }
+      if (!finalText.trim()) setMessages(prev => { const c = [...prev]; const last = c[c.length - 1]; if (last?.role === "assistant") c[c.length - 1] = { ...last, content: "No response returned. Try again." }; return c; });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Chat failed";
+      setErrorMsg(msg);
+      setMessages(prev => { const c = [...prev]; const last = c[c.length - 1]; if (last?.role === "assistant") c[c.length - 1] = { ...last, content: `Error: ${msg}` }; return c; });
+    } finally { setChatLoading(false); scrollToBottom(); }
   }
 
-  async function runStructuredAction(inputText: string) {
-    const finalText = inputText.trim();
-    if (!finalText) return;
-
-    setErrorMsg(null);
-    setSuccessMsg(null);
-    setPreview(null);
-    setActionLoading(true);
-
+  async function runAction(inputText: string) {
+    const text = inputText.trim(); if (!text) return;
+    setErrorMsg(null); setSuccessMsg(null); setPreview(null); setActionLoading(true);
     try {
-      const accessToken = await getAccessToken();
-
-      const res = await fetch(`/api/o/${encodeURIComponent(slug)}/ai/actions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          action,
-          prompt: finalText,
-        }),
-      });
-
-      const raw = await res.text();
-      const parsed = tryParseJson(raw) as ActionPreviewResponse | null;
-
-      if (!res.ok || !parsed?.ok || !parsed.preview || action === "chat") {
-        throw new Error(parsed?.error || raw || "Failed to run AI action");
-      }
-
-      setPreview({
-        action: action as Exclude<ActionType, "chat">,
-        prompt: finalText,
-        data: parsed.preview,
-      });
-
-      setSuccessMsg("Preview generated. Review it before saving.");
+      const token = await getToken();
+      const res = await fetch(`/api/o/${encodeURIComponent(slug)}/ai/actions`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ action, prompt: text }) });
+      const parsed = tryJson(await res.text()) as ActionPreviewResponse | null;
+      if (!res.ok || !parsed?.ok || !parsed.preview) throw new Error(parsed?.error ?? "Action failed");
+      setPreview({ action: action as Exclude<ActionType, "chat">, prompt: text, data: parsed.preview });
+      setSuccessMsg("Preview ready — review before saving.");
       setPrompt("");
-    } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : "Failed to run AI action");
-    } finally {
-      setActionLoading(false);
-    }
+    } catch (err) { setErrorMsg(err instanceof Error ? err.message : "Action failed"); }
+    finally { setActionLoading(false); }
   }
 
   async function approvePreview() {
     if (!preview) return;
-
-    setApproveLoading(true);
-    setErrorMsg(null);
-    setSuccessMsg(null);
-
+    setApproveLoading(true); setErrorMsg(null); setSuccessMsg(null);
     try {
-      const accessToken = await getAccessToken();
-
-      const res = await fetch(`/api/o/${encodeURIComponent(slug)}/ai/actions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-          "x-ai-mode": "execute",
-        },
-        body: JSON.stringify({
-          action: preview.action,
-          prompt: preview.prompt,
-          preview: preview.data,
-        }),
-      });
-
-      const raw = await res.text();
-      const parsed = tryParseJson(raw) as ActionPreviewResponse | null;
-
-      if (!res.ok || !parsed?.ok) {
-        throw new Error(parsed?.error || raw || "Failed to approve AI action");
-      }
-
-      const assistantMessage =
-        parsed.message ||
-        parsed.summary ||
-        `${labelForAction(preview.action)} completed successfully.`;
-
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: uid(),
-          role: "assistant",
-          content: assistantMessage,
-        },
-      ]);
-
-      setPreview(null);
-      setSuccessMsg(parsed.summary || "Saved successfully.");
-      scrollToBottom();
-    } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : "Failed to approve preview");
-    } finally {
-      setApproveLoading(false);
-    }
+      const token = await getToken();
+      const res = await fetch(`/api/o/${encodeURIComponent(slug)}/ai/actions`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, "x-ai-mode": "execute" }, body: JSON.stringify({ action: preview.action, prompt: preview.prompt, preview: preview.data }) });
+      const parsed = tryJson(await res.text()) as ActionPreviewResponse | null;
+      if (!res.ok || !parsed?.ok) throw new Error(parsed?.error ?? "Approval failed");
+      setMessages(prev => [...prev, { id: uid(), role: "assistant", content: parsed.message || parsed.summary || `${labelForAction(preview.action)} completed.` }]);
+      setPreview(null); setSuccessMsg(parsed.summary || "Saved."); scrollToBottom();
+    } catch (err) { setErrorMsg(err instanceof Error ? err.message : "Approval failed"); }
+    finally { setApproveLoading(false); }
   }
 
   async function handleSubmit() {
-    if (!prompt.trim()) return;
-
-    if (action === "chat") {
-      await runChat(prompt);
-      return;
-    }
-
-    await runStructuredAction(prompt);
+    if (!prompt.trim() || isLoading) return;
+    if (action === "chat") await runChat(prompt); else await runAction(prompt);
   }
 
-  function handleStarterPrompt(text: string) {
-    setPrompt(text);
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void handleSubmit(); }
   }
-
-  const actionModeLabel = action === "chat" ? "Conversation" : "Structured AI workflow";
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[0.9fr_1.12fr_0.88fr]">
-      <SectionCard
-        title="AI Modes"
-        subtitle="Choose the job you want AI to do"
-        className="bg-[var(--card)]"
-      >
-        <div className="grid gap-3">
-          {actionCards.map((item) => {
-            const active = item.key === action;
-            return (
-              <button
-                key={item.key}
-                type="button"
-                onClick={() => {
-                  setAction(item.key);
-                  setErrorMsg(null);
-                  setSuccessMsg(null);
-                }}
-                className={`rounded-[22px] border p-4 text-left transition ${actionCardClass(active)}`}
-              >
-                <div className="text-sm font-semibold">{item.title}</div>
-                <div
-                  className={
-                    active
-                      ? "mt-2 text-sm text-[color:rgba(7,17,31,0.72)]"
-                      : "mt-2 text-sm text-[var(--foreground-muted)]"
-                  }
-                >
-                  {item.description}
-                </div>
-              </button>
-            );
-          })}
-        </div>
+    <div className="flex h-full flex-col" style={{ minHeight: "calc(100vh - 80px)" }}>
 
-        <div className="mt-5 rounded-[22px] border border-[var(--border)] bg-[var(--card-soft)] p-4">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
-            Mode
-          </div>
-          <div className="mt-2 text-base font-semibold text-[var(--foreground)]">
-            {actionModeLabel}
-          </div>
-          <div className="mt-2 text-sm leading-6 text-[var(--foreground-muted)]">
-            {action === "chat"
-              ? "Use this when you want reasoning and explanation."
-              : "Use this when you want a structured preview before writing anything to the database."}
-          </div>
-        </div>
+      {/* Hidden file inputs */}
+      <input ref={companyFileRef} type="file" className="hidden" accept=".pdf,.docx,.txt" onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleUpload(f, "company_doc"); e.target.value = ""; }} />
+      <input ref={financialFileRef} type="file" className="hidden" accept=".csv,.xlsx,.xls" onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleUpload(f, "financial"); e.target.value = ""; }} />
 
-        <div className="mt-5 rounded-[22px] border border-[var(--border)] bg-[var(--card-soft)] p-4">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
-            Best use cases
-          </div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {activePrompts.map((example) => (
-              <button
-                key={example}
-                type="button"
-                onClick={() => handleStarterPrompt(example)}
-                className="rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-3 py-2 text-left text-xs font-semibold text-[var(--foreground-soft)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
-              >
-                {example}
-              </button>
-            ))}
-          </div>
-        </div>
-      </SectionCard>
+      {/* ── Message thread (scrollable) ── */}
+      <div ref={scrollerRef} className="flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
 
-      <SectionCard
-        title="AI Workspace"
-        subtitle="Prompt, review, and move work forward"
-        className="bg-[linear-gradient(180deg,rgba(109,94,252,0.08),rgba(55,207,255,0.03))]"
-      >
-        {(errorMsg || successMsg) && (
-          <div className="mb-5 grid gap-3">
-            {errorMsg ? (
-              <div className="rounded-[18px] border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-700 dark:text-red-100">
-                {errorMsg}
-              </div>
-            ) : null}
-
-            {successMsg ? (
-              <div className="rounded-[18px] border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-100">
-                {successMsg}
-              </div>
-            ) : null}
+        {/* Empty state — centered, like the reference */}
+        {isEmpty && !isLoading && (
+          <div className="flex h-full min-h-[400px] flex-col items-center justify-center px-4 text-center">
+            <h2 className="text-3xl font-semibold tracking-tight text-[var(--foreground)] md:text-4xl">
+              How can I help today?
+            </h2>
+            <p className="mt-3 text-sm text-[var(--foreground-muted)]">
+              Ask about performance, generate OKRs, diagnose blockers, or update KPIs.
+            </p>
           </div>
         )}
 
-        <div
-          ref={scrollerRef}
-          className="mb-5 h-[420px] overflow-y-auto rounded-[24px] border border-[var(--border)] bg-[var(--card-soft)] p-4"
-        >
-          <div className="space-y-4">
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
-              >
-                <div
-                  className={
-                    message.role === "user"
-                      ? "max-w-[88%] rounded-[22px] border border-[var(--border-active)] bg-[var(--foreground)] px-4 py-3 text-sm leading-7 text-[var(--background)] shadow-[0_12px_30px_rgba(0,0,0,0.10)]"
-                      : "max-w-[88%] rounded-[22px] border border-[var(--border)] bg-[var(--card)] px-4 py-3 text-sm leading-7 text-[var(--foreground)]"
-                  }
-                >
-                  <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] opacity-60">
-                    {message.role === "user" ? "You" : "Your AI"}
-                  </div>
-                  <div className="whitespace-pre-wrap">
-  {message.content || (chatLoading && message.role === "assistant" ? "Thinking..." : "")}
-</div>
+        {/* Messages */}
+        {messages.length > 0 && (
+          <div className="mx-auto w-full max-w-2xl space-y-6 px-4 py-6">
+            {messages.map((message) => {
+              const raw = message.content || (chatLoading && message.role === "assistant" ? "…" : "");
+              const display = raw.split(/---\s*\nAsk next:/i)[0].trim();
+              const followUps = (() => {
+                const parts = raw.split(/---\s*\nAsk next:/i);
+                if (parts.length < 2) return [];
+                return parts[1].trim().split("\n").filter(l => /^\d+\./.test(l.trim())).map(l => l.replace(/^\d+\.\s*/, "").trim()).filter(Boolean).slice(0, 3);
+              })();
 
-{message.role === "assistant" && message.content && (
-  <button
-    type="button"
-    onClick={() => exportAiResponseToPdf(message)}
-    className="mt-4 inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-xs font-semibold text-[var(--foreground-soft)] hover:border-[var(--border-strong)]"
-  >
-    Export PDF
-  </button>
-)}
-                </div>
-              </div>
-            ))}
-
-            {messages.length === 0 ? (
-              <EmptyState
-                title="No messages yet"
-                description="Start a chat or run a structured AI workflow from the left-side action panel."
-              />
-            ) : null}
-          </div>
-        </div>
-
-        <div className="rounded-[24px] border border-[var(--border)] bg-[var(--card-soft)] p-4">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <div>
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
-                Prompt
-              </div>
-              <div className="mt-1 text-sm text-[var(--foreground-muted)]">
-                {labelForAction(action)}
-              </div>
-            </div>
-            <StatusBadge tone={action === "chat" ? "info" : "neutral"}>
-              {action === "chat" ? "Live" : "Preview first"}
-            </StatusBadge>
-          </div>
-
-          <textarea
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            placeholder={placeholderForAction(action)}
-            className="min-h-[140px] w-full resize-none rounded-[20px] border border-[var(--border)] bg-[var(--card)] px-4 py-4 text-sm leading-7 text-[var(--foreground)] outline-none placeholder:text-[var(--foreground-faint)] transition focus:border-[var(--border-strong)]"
-          />
-
-          <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div className="flex flex-wrap gap-2">
-              {activePrompts.slice(0, 2).map((example) => (
-                <button
-                  key={example}
-                  type="button"
-                  onClick={() => handleStarterPrompt(example)}
-                  className="rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-3 py-2 text-xs font-semibold text-[var(--foreground-soft)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
-                >
-                  Use example
-                </button>
-              ))}
-            </div>
-
-            <button
-              type="button"
-              onClick={() => void handleSubmit()}
-              disabled={chatLoading || actionLoading || approveLoading || !prompt.trim()}
-              className="inline-flex h-12 items-center justify-center rounded-full bg-[var(--foreground)] px-5 text-sm font-semibold text-[var(--background)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {chatLoading || actionLoading
-                ? "Working..."
-                : action === "chat"
-                  ? "Ask Your AI"
-                  : "Generate preview"}
-            </button>
-          </div>
-        </div>
-      </SectionCard>
-
-      <div className="grid gap-6">
-        <SectionCard
-          title="Preview & Approval"
-          subtitle="Review structured output before it writes to the workspace"
-          className="bg-[var(--card)]"
-        >
-          {preview ? (
-            <PreviewPanel
-              preview={preview}
-              onApprove={() => void approvePreview()}
-              onDiscard={() => {
-                setPreview(null);
-                setSuccessMsg(null);
-                setErrorMsg(null);
-              }}
-              executing={approveLoading}
-            />
-          ) : (
-            <EmptyState
-              title="No preview generated yet"
-              description="Run Create OKR, Generate JTBD, Create Tasks, Rewrite KPI, or Diagnose Underperformance to populate this panel."
-            />
-          )}
-        </SectionCard>
-
-        <SectionCard
-          title="AI guardrails"
-          subtitle="How this workspace behaves"
-          className="bg-[linear-gradient(180deg,rgba(109,94,252,0.08),rgba(55,207,255,0.03))]"
-        >
-          <div className="grid gap-3">
-            <GuardrailRow
-              title="Grounded in your workspace"
-              desc="Chat uses the active company context instead of generic advice."
-            />
-            <GuardrailRow
-              title="Preview before save"
-              desc="Structured actions generate previews first, then write only after approval."
-            />
-            <GuardrailRow
-              title="Built for execution"
-              desc="Use AI to move KPIs, OKRs, JTBD, and tasks forward, not just generate text."
-            />
-          </div>
-
-          <div className="mt-5 rounded-[20px] border border-[var(--border)] bg-[var(--card-soft)] p-4">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
-              Next useful pages
-            </div>
-            <div className="mt-3 grid gap-2">
-              <MiniLink href={`/o/${slug}/dashboard`} label="Dashboard" />
-              <MiniLink href={`/o/${slug}/kpis`} label="KPIs" />
-              <MiniLink href={`/o/${slug}/objectives`} label="Objectives" />
-              <MiniLink href={`/o/${slug}/tasks`} label="Tasks" />
-            </div>
-          </div>
-        </SectionCard>
-      </div>
-    </div>
-  );
-}
-
-function GuardrailRow({
-  title,
-  desc,
-}: {
-  title: string;
-  desc: string;
-}) {
-  return (
-    <div className="rounded-[18px] border border-[var(--border)] bg-[var(--card-soft)] p-4">
-      <div className="text-sm font-semibold text-[var(--foreground)]">{title}</div>
-      <div className="mt-2 text-sm leading-6 text-[var(--foreground-muted)]">{desc}</div>
-    </div>
-  );
-}
-
-function MiniLink({
-  href,
-  label,
-}: {
-  href: string;
-  label: string;
-}) {
-  return (
-    <Link
-      href={href}
-      className="rounded-[16px] border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 py-3 text-sm font-semibold text-[var(--foreground-soft)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
-    >
-      {label}
-    </Link>
-  );
-}
-
-function PreviewPanel({
-  preview,
-  onApprove,
-  onDiscard,
-  executing,
-}: {
-  preview: PreviewState;
-  onApprove: () => void;
-  onDiscard: () => void;
-  executing: boolean;
-}) {
-  const data = preview.data;
-  const summary = safeString(data.summary);
-  const diagnosis = safeString(data.diagnosis);
-  const causes = asArray(data.causes);
-  const actions = asArray(data.actions);
-
-  const okr = asObject(data.okr);
-  const cluster = asObject(data.cluster);
-  const kpi = asObject(data.kpi);
-  const tasks = asArray(data.tasks);
-  const suggestedUpdates = asObject(data.suggested_updates);
-
-  return (
-    <div className="space-y-4">
-      <div className="rounded-[22px] border border-[var(--border)] bg-[var(--card-soft)] p-4">
-        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          <div>
-            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
-              Preview
-            </div>
-            <div className="mt-2 text-xl font-bold text-[var(--foreground)]">
-              {labelForAction(preview.action)}
-            </div>
-            {summary ? (
-              <div className="mt-2 text-sm leading-6 text-[var(--foreground-muted)]">
-                {summary}
-              </div>
-            ) : null}
-          </div>
-
-          <div className="flex gap-2">
-            {preview.action !== "diagnose_underperformance" ? (
-              <button
-                type="button"
-                onClick={onApprove}
-                disabled={executing}
-                className="inline-flex h-11 items-center justify-center rounded-full bg-[var(--foreground)] px-4 text-sm font-semibold text-[var(--background)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {executing ? "Saving..." : "Approve & Save"}
-              </button>
-            ) : null}
-
-            <button
-              type="button"
-              onClick={onDiscard}
-              disabled={executing}
-              className="inline-flex h-11 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-sm font-semibold text-[var(--foreground)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)] disabled:opacity-50"
-            >
-              {preview.action === "diagnose_underperformance" ? "Close" : "Discard"}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {preview.action === "diagnose_underperformance" ? (
-        <>
-          {diagnosis ? (
-            <div className="rounded-[22px] border border-[var(--border)] bg-[var(--card-soft)] p-4">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
-                Diagnosis
-              </div>
-              <div className="mt-2 whitespace-pre-wrap text-sm leading-7 text-[var(--foreground)]">
-                {diagnosis}
-              </div>
-            </div>
-          ) : null}
-
-          {causes.length ? (
-            <PreviewListCard
-              title="Likely causes"
-              items={causes.map((item) => safeString(item)).filter(Boolean)}
-            />
-          ) : null}
-
-          {actions.length ? (
-            <PreviewListCard
-              title="Recommended actions"
-              items={actions.map((item) => safeString(item)).filter(Boolean)}
-            />
-          ) : null}
-
-          {suggestedUpdates ? (
-            <div className="rounded-[22px] border border-[var(--border)] bg-[var(--card-soft)] p-4">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
-                Suggested updates
-              </div>
-              <pre className="mt-3 overflow-x-auto whitespace-pre-wrap text-xs leading-6 text-[var(--foreground-soft)]">
-                {JSON.stringify(suggestedUpdates, null, 2)}
-              </pre>
-            </div>
-          ) : null}
-        </>
-      ) : null}
-
-      {preview.action === "create_okr" && okr ? (
-        <>
-          <StructuredCard
-            title={safeString(okr.title) || "Untitled OKR"}
-            subtitle={safeString(okr.description)}
-            chips={[
-              `Objective ID: ${safeString(okr.objective_id) || "—"}`,
-              `Department ID: ${safeString(okr.department_id) || "—"}`,
-              `Owner ID: ${safeString(okr.owner_user_id) || "—"}`,
-              `Status: ${safeString(okr.status) || "draft"}`,
-            ]}
-          />
-          {asArray(okr.key_results).length ? (
-            <div className="rounded-[22px] border border-[var(--border)] bg-[var(--card-soft)] p-4">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
-                Key results
-              </div>
-              <div className="mt-3 grid gap-3">
-                {asArray(okr.key_results).map((item, index) => {
-                  const kr = asObject(item) ?? {};
-                  const current = Number(kr.current_value ?? 0);
-                  const target = Number(kr.target_value ?? 0);
-                  const progress =
-                    target > 0 ? Math.max(0, Math.min(100, (current / target) * 100)) : 0;
-
-                  return (
-                    <div
-                      key={index}
-                      className="rounded-[18px] border border-[var(--border)] bg-[var(--card)] p-4"
-                    >
-                      <div className="text-sm font-semibold text-[var(--foreground)]">
-                        {safeString(kr.title) || `Key Result ${index + 1}`}
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        <span className={chipClass()}>{`Metric: ${safeString(kr.metric_name) || "—"}`}</span>
-                        <span className={chipClass()}>{`Current: ${String(
-                          kr.current_value ?? 0
-                        )} ${safeString(kr.unit)}`}</span>
-                        <span className={chipClass()}>{`Target: ${String(
-                          kr.target_value ?? 0
-                        )} ${safeString(kr.unit)}`}</span>
-                        <span className={chipClass()}>{`Status: ${safeString(kr.status) || "not_started"}`}</span>
-                      </div>
-                      <div className="mt-3">
-                        <ProgressBar value={progress} />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ) : null}
-        </>
-      ) : null}
-
-      {(preview.action === "generate_jtbd" || preview.action === "create_tasks") && cluster ? (
-        <StructuredCard
-          title={safeString(cluster.title) || "Untitled cluster"}
-          subtitle={safeString(cluster.description)}
-          chips={[
-            `Department ID: ${safeString(cluster.department_id) || "—"}`,
-            `Objective ID: ${safeString(cluster.objective_id) || "—"}`,
-            `OKR ID: ${safeString(cluster.okr_id) || "—"}`,
-            `KR ID: ${safeString(cluster.key_result_id) || "—"}`,
-            `Owner ID: ${safeString(cluster.owner_user_id) || "—"}`,
-          ]}
-        />
-      ) : null}
-
-      {(preview.action === "generate_jtbd" || preview.action === "create_tasks") && tasks.length ? (
-        <div className="rounded-[22px] border border-[var(--border)] bg-[var(--card-soft)] p-4">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
-            Tasks
-          </div>
-          <div className="mt-3 grid gap-3">
-            {tasks.map((task, index) => {
-              const row = asObject(task) ?? {};
               return (
-                <div
-                  key={index}
-                  className="rounded-[18px] border border-[var(--border)] bg-[var(--card)] p-4"
-                >
-                  <div className="text-sm font-semibold text-[var(--foreground)]">
-                    {safeString(row.title) || `Task ${index + 1}`}
-                  </div>
-                  {safeString(row.description) ? (
-                    <div className="mt-2 text-sm leading-6 text-[var(--foreground-muted)]">
-                      {safeString(row.description)}
-                    </div>
-                  ) : null}
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <StatusBadge tone={toneFromStatus(safeString(row.status) || "todo")}>
-                      {safeString(row.status) || "todo"}
-                    </StatusBadge>
-                    <StatusBadge tone={toneFromStatus(safeString(row.priority) || "medium")}>
-                      {safeString(row.priority) || "medium"}
-                    </StatusBadge>
-                    <span className={chipClass()}>{`Due: ${safeString(row.due_date) || "—"}`}</span>
+                <div key={message.id} className={`flex gap-3 ${message.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
+                  {message.role === "assistant" && (
+                    <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--foreground)] text-[11px] font-bold text-[var(--background)]">A</div>
+                  )}
+                  <div className={["max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-7",
+                    message.role === "user"
+                      ? "bg-[var(--foreground)] text-[var(--background)]"
+                      : "bg-[var(--card)] border border-[var(--border)] text-[var(--foreground)]",
+                  ].join(" ")}>
+                    <div className="whitespace-pre-wrap">{display}</div>
+                    {message.role === "assistant" && message.content && !chatLoading && (
+                      <div className="mt-3 space-y-2">
+                        {followUps.length > 0 && (
+                          <div className="border-t border-[var(--border)] pt-3">
+                            <div className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-[var(--foreground-faint)]">Ask next</div>
+                            <div className="flex flex-col gap-1.5">
+                              {followUps.map((s) => (
+                                <button key={s} type="button"
+                                  onClick={() => { setPrompt(s); setAction("chat"); textareaRef.current?.focus(); }}
+                                  className="rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-3 py-1.5 text-left text-xs text-[var(--foreground-soft)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]">
+                                  {s}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        <button type="button" onClick={() => void exportPdf(message, slug)}
+                          className="inline-flex items-center gap-1 rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-3 py-1.5 text-[11px] text-[var(--foreground-faint)] transition hover:text-[var(--foreground)]">
+                          ↓ Export PDF
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               );
             })}
           </div>
-        </div>
-      ) : null}
+        )}
 
-      {preview.action === "rewrite_kpi" && kpi ? (
-        <StructuredCard
-          title={safeString(kpi.title) || "Untitled KPI"}
-          subtitle={safeString(kpi.description)}
-          chips={[
-            `Department ID: ${safeString(kpi.department_id) || "—"}`,
-            `Owner ID: ${safeString(kpi.owner_user_id) || "—"}`,
-            `Unit: ${safeString(kpi.unit) || "—"}`,
-            `Direction: ${safeString(kpi.direction) || "increase"}`,
-            `Current: ${String(kpi.current_value ?? 0)}`,
-            `Target: ${String(kpi.target_value ?? 0)}`,
-          ]}
-        />
-      ) : null}
-
-      {!summary &&
-      !diagnosis &&
-      !okr &&
-      !cluster &&
-      !kpi &&
-      !tasks.length &&
-      !causes.length &&
-      !actions.length ? (
-        <div className="rounded-[22px] border border-[var(--border)] bg-[var(--card-soft)] p-4">
-          <pre className="overflow-x-auto whitespace-pre-wrap text-xs leading-6 text-[var(--foreground-soft)]">
-            {JSON.stringify(data, null, 2)}
-          </pre>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function PreviewListCard({
-  title,
-  items,
-}: {
-  title: string;
-  items: string[];
-}) {
-  return (
-    <div className="rounded-[22px] border border-[var(--border)] bg-[var(--card-soft)] p-4">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
-        {title}
-      </div>
-      <div className="mt-3 space-y-2">
-        {items.map((item) => (
-          <div
-            key={item}
-            className="rounded-[16px] border border-[var(--border)] bg-[var(--card)] px-4 py-3 text-sm leading-6 text-[var(--foreground)]"
-          >
-            {item}
+        {/* Preview panel */}
+        {preview && (
+          <div className="mx-auto w-full max-w-2xl px-4 pb-4">
+            <div className="rounded-2xl border border-[var(--border-active)] bg-[var(--card)] p-4">
+              <div className="mb-3 flex items-center justify-between gap-4">
+                <div>
+                  <div className="text-[11px] font-semibold uppercase tracking-widest text-[var(--foreground-faint)]">Preview · {labelForAction(preview.action)}</div>
+                  {safeString(preview.data.summary) && <div className="mt-1 text-sm text-[var(--foreground-muted)]">{safeString(preview.data.summary)}</div>}
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  {preview.action !== "diagnose_underperformance" && (
+                    <button type="button" onClick={() => void approvePreview()} disabled={approveLoading}
+                      className="inline-flex h-8 items-center rounded-full bg-[var(--foreground)] px-4 text-xs font-semibold text-[var(--background)] transition hover:opacity-90 disabled:opacity-50">
+                      {approveLoading ? "Saving..." : "Approve & Save"}
+                    </button>
+                  )}
+                  <button type="button" onClick={() => { setPreview(null); setSuccessMsg(null); }} disabled={approveLoading}
+                    className="inline-flex h-8 items-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-xs font-semibold text-[var(--foreground)] transition hover:border-[var(--border-strong)] disabled:opacity-50">
+                    {preview.action === "diagnose_underperformance" ? "Close" : "Discard"}
+                  </button>
+                </div>
+              </div>
+              <PreviewContent preview={preview} />
+            </div>
           </div>
-        ))}
+        )}
+      </div>
+
+      {/* ── Bottom area ── */}
+      <div className="shrink-0 px-4 pb-4 pt-2">
+        <div className="mx-auto w-full max-w-2xl space-y-3">
+
+          {/* Alerts */}
+          {errorMsg && (
+            <div className="flex items-center justify-between rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-2.5 text-sm text-red-700 dark:text-red-300">
+              {errorMsg}
+              <button type="button" onClick={() => setErrorMsg(null)} className="ml-3 opacity-50 hover:opacity-100">✕</button>
+            </div>
+          )}
+          {successMsg && (
+            <div className="flex items-center justify-between rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-2.5 text-sm text-emerald-700 dark:text-emerald-300">
+              {successMsg}
+              <button type="button" onClick={() => setSuccessMsg(null)} className="ml-3 opacity-50 hover:opacity-100">✕</button>
+            </div>
+          )}
+
+          {/* Input box — matching the reference exactly */}
+          <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--card)] transition-shadow focus-within:border-[var(--border-strong)] focus-within:shadow-[0_0_0_3px_rgba(0,0,0,0.06)]">
+            <textarea
+              ref={textareaRef}
+              value={prompt}
+              onChange={(e) => { setPrompt(e.target.value); autoResize(); }}
+              onKeyDown={handleKeyDown}
+              placeholder={PLACEHOLDERS[action]}
+              rows={2}
+              className="w-full resize-none bg-transparent px-4 pt-4 pb-2 text-sm leading-6 text-[var(--foreground)] outline-none placeholder:text-[var(--foreground-faint)]"
+              style={{ minHeight: "60px", maxHeight: "200px" }}
+            />
+            {/* Bottom toolbar */}
+            <div className="flex items-center gap-2 border-t border-[var(--border)] px-3 py-2">
+              {/* File attach — company doc */}
+              <button type="button" onClick={() => companyFileRef.current?.click()} title="Upload company document"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--foreground-faint)] transition hover:bg-[var(--button-secondary-bg)] hover:text-[var(--foreground)]">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+              </button>
+              {/* File attach — financial */}
+              <button type="button" onClick={() => financialFileRef.current?.click()} title="Upload financial statement"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--foreground-faint)] transition hover:bg-[var(--button-secondary-bg)] hover:text-[var(--foreground)]">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+              </button>
+              {/* Files indicator */}
+              {files.length > 0 && (
+                <button type="button" onClick={() => setShowFiles(v => !v)}
+                  className="flex h-8 items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--button-secondary-bg)] px-2.5 text-[11px] font-semibold text-[var(--foreground-soft)] transition hover:border-[var(--border-strong)]">
+                  {files.length} file{files.length > 1 ? "s" : ""}
+                </button>
+              )}
+              <div className="h-4 w-px bg-[var(--border)]" />
+              {/* Mode indicator */}
+              <span className="text-[11px] text-[var(--foreground-faint)]">
+                {action === "chat" ? "Chat" : `${labelForAction(action)} · preview first`}
+              </span>
+
+              {/* Send button — right-aligned */}
+              <div className="ml-auto">
+                <button type="button" onClick={() => void handleSubmit()} disabled={isLoading || !prompt.trim()}
+                  className="inline-flex h-8 items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--button-secondary-bg)] px-3 text-xs font-semibold text-[var(--foreground)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)] disabled:opacity-30">
+                  {isLoading ? (
+                    <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--foreground)]" />
+                  ) : (
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+                    </svg>
+                  )}
+                  Send
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick action buttons — row below input, matching reference */}
+          <div className="flex flex-wrap items-center gap-2">
+            {QUICK_ACTIONS.map((qa) => (
+              <button key={qa.key} type="button"
+                onClick={() => { setAction(qa.key); textareaRef.current?.focus(); }}
+                className={["inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold transition",
+                  action === qa.key
+                    ? "border-[var(--border-active)] bg-[var(--foreground)] text-[var(--background)]"
+                    : "border-[var(--border)] bg-[var(--button-secondary-bg)] text-[var(--foreground-soft)] hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]",
+                ].join(" ")}>
+                {qa.label}
+              </button>
+            ))}
+            {/* Files toggle */}
+            <button type="button" onClick={() => setShowFiles(v => !v)}
+              className={["ml-auto inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold transition",
+                showFiles
+                  ? "border-[var(--border-active)] bg-[var(--foreground)] text-[var(--background)]"
+                  : "border-[var(--border)] bg-[var(--button-secondary-bg)] text-[var(--foreground-soft)] hover:border-[var(--border-strong)]",
+              ].join(" ")}>
+              ⊕ Files
+            </button>
+          </div>
+
+          {/* Starter prompts — only on empty state */}
+          {isEmpty && (
+            <div className="flex flex-wrap items-center gap-2">
+              {STARTER_PROMPTS.map((s) => (
+                <button key={s.label} type="button"
+                  onClick={() => { setPrompt(s.prompt); setAction(s.action); textareaRef.current?.focus(); }}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--card-soft)] px-3 py-2 text-xs font-medium text-[var(--foreground-muted)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)] hover:text-[var(--foreground)]">
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Files panel */}
+          {showFiles && (
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--card-soft)] p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <span className="text-[11px] font-semibold uppercase tracking-widest text-[var(--foreground-faint)]">Context files — AI reads these in every response</span>
+                <button type="button" onClick={() => setShowFiles(false)} className="text-[var(--foreground-faint)] hover:text-[var(--foreground)]">✕</button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" disabled={uploading} onClick={() => companyFileRef.current?.click()}
+                  className="rounded-lg border border-[var(--border)] bg-[var(--button-secondary-bg)] px-3 py-2 text-xs font-semibold text-[var(--foreground-soft)] transition hover:border-[var(--border-strong)] disabled:opacity-50">
+                  {uploading ? "Uploading..." : "↑ Company doc (PDF, DOCX, TXT · max 2MB)"}
+                </button>
+                <button type="button" disabled={uploading} onClick={() => financialFileRef.current?.click()}
+                  className="rounded-lg border border-[var(--border)] bg-[var(--button-secondary-bg)] px-3 py-2 text-xs font-semibold text-[var(--foreground-soft)] transition hover:border-[var(--border-strong)] disabled:opacity-50">
+                  {uploading ? "Uploading..." : "↑ Financial statement (CSV, XLSX · max 2MB)"}
+                </button>
+              </div>
+              {files.length > 0 && (
+                <div className="mt-3 grid gap-1.5">
+                  {files.map((f) => (
+                    <div key={f.id} className="flex items-center justify-between rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2">
+                      <div>
+                        <div className="max-w-[260px] truncate text-xs font-semibold text-[var(--foreground)]">{f.file_name}</div>
+                        <div className="text-[10px] text-[var(--foreground-faint)]">{f.file_type === "company_doc" ? "Company doc" : "Financial"} · {fmtBytes(f.size_bytes)}</div>
+                      </div>
+                      <button type="button" onClick={() => void handleDeleteFile(f.id)}
+                        className="px-2 py-1 text-[11px] text-[var(--foreground-faint)] transition hover:text-red-500">
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Nav links */}
+          <div className="flex flex-wrap items-center justify-center gap-2 pb-1">
+            {[{ href: `/o/${slug}/dashboard`, label: "Dashboard" }, { href: `/o/${slug}/kpis`, label: "KPIs" }, { href: `/o/${slug}/objectives`, label: "Objectives" }, { href: `/o/${slug}/tasks`, label: "Tasks" }].map(link => (
+              <Link key={link.href} href={link.href}
+                className="text-xs text-[var(--foreground-faint)] transition hover:text-[var(--foreground)]">
+                {link.label}
+              </Link>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
-function StructuredCard({
-  title,
-  subtitle,
-  chips,
-}: {
-  title: string;
-  subtitle?: string;
-  chips: string[];
-}) {
-  return (
-    <div className="rounded-[22px] border border-[var(--border)] bg-[var(--card-soft)] p-4">
-      <div className="text-lg font-semibold text-[var(--foreground)]">{title}</div>
-      {subtitle ? (
-        <div className="mt-2 text-sm leading-6 text-[var(--foreground-muted)]">{subtitle}</div>
-      ) : null}
-      <div className="mt-3 flex flex-wrap gap-2">
-        {chips.map((chip) => (
-          <span key={chip} className={chipClass()}>
-            {chip}
-          </span>
-        ))}
+function PreviewContent({ preview }: { preview: PreviewState }) {
+  const data = preview.data;
+  const chip = "rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-2.5 py-1 text-[11px] text-[var(--foreground-soft)]";
+
+  if (preview.action === "diagnose_underperformance") {
+    const causes = asArray(data.causes); const actions = asArray(data.actions);
+    return (
+      <div className="space-y-3 text-sm">
+        {safeString(data.diagnosis) && <div className="rounded-xl border border-[var(--border)] bg-[var(--card-soft)] p-4 leading-7 whitespace-pre-wrap text-[var(--foreground)]">{safeString(data.diagnosis)}</div>}
+        {causes.length > 0 && <div><div className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-[var(--foreground-faint)]">Likely causes</div><div className="space-y-1.5">{causes.map((c, i) => <div key={i} className="rounded-lg border border-[var(--border)] bg-[var(--card-soft)] px-4 py-2.5 text-[var(--foreground)]">{safeString(c)}</div>)}</div></div>}
+        {actions.length > 0 && <div><div className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-[var(--foreground-faint)]">Recommended actions</div><div className="space-y-1.5">{actions.map((a, i) => <div key={i} className="rounded-lg border border-[var(--border)] bg-[var(--card-soft)] px-4 py-2.5 text-[var(--foreground)]">{safeString(a)}</div>)}</div></div>}
       </div>
-    </div>
-  );
+    );
+  }
+
+  const okr = asObject(data.okr);
+  if (preview.action === "create_okr" && okr) {
+    return (
+      <div className="space-y-2 text-sm">
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--card-soft)] p-4">
+          <div className="font-semibold text-[var(--foreground)]">{safeString(okr.title) || "Untitled OKR"}</div>
+          {safeString(okr.description) && <div className="mt-1 text-[var(--foreground-muted)]">{safeString(okr.description)}</div>}
+          <div className="mt-2 flex flex-wrap gap-1.5">{[`Status: ${safeString(okr.status) || "draft"}`, `Progress: ${okr.progress ?? 0}%`].map(c => <span key={c} className={chip}>{c}</span>)}</div>
+        </div>
+        {asArray(okr.key_results).map((kr, i) => {
+          const row = asObject(kr) ?? {}; const cur = Number(row.current_value ?? 0); const tgt = Number(row.target_value ?? 0); const pct = tgt > 0 ? Math.max(0, Math.min(100, (cur / tgt) * 100)) : 0;
+          return <div key={i} className="rounded-xl border border-[var(--border)] bg-[var(--card-soft)] p-4"><div className="font-medium text-[var(--foreground)]">{safeString(row.title) || `KR ${i + 1}`}</div><div className="mt-2 flex flex-wrap gap-1.5">{[`${cur}/${tgt} ${safeString(row.unit)}`, safeString(row.status) || "not_started"].map(c => <span key={c} className={chip}>{c}</span>)}</div><div className="mt-2 h-1 w-full rounded-full bg-[var(--border)]"><div className="h-full rounded-full bg-[var(--foreground)] transition-all" style={{ width: `${pct}%` }} /></div></div>;
+        })}
+      </div>
+    );
+  }
+
+  const cluster = asObject(data.cluster);
+  if ((preview.action === "generate_jtbd" || preview.action === "create_tasks") && cluster) {
+    return (
+      <div className="space-y-2 text-sm">
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--card-soft)] p-4"><div className="font-semibold text-[var(--foreground)]">{safeString(cluster.title) || "Untitled"}</div>{safeString(cluster.description) && <div className="mt-1 text-[var(--foreground-muted)]">{safeString(cluster.description)}</div>}</div>
+        {asArray(data.tasks).map((task, i) => { const row = asObject(task) ?? {}; return <div key={i} className="rounded-xl border border-[var(--border)] bg-[var(--card-soft)] p-4"><div className="font-medium text-[var(--foreground)]">{safeString(row.title) || `Task ${i + 1}`}</div>{safeString(row.description) && <div className="mt-1 text-[var(--foreground-muted)]">{safeString(row.description)}</div>}<div className="mt-2 flex flex-wrap gap-1.5">{[safeString(row.status) || "todo", safeString(row.priority) || "medium"].map(c => <span key={c} className={chip}>{c}</span>)}</div></div>; })}
+      </div>
+    );
+  }
+
+  const kpi = asObject(data.kpi);
+  if (preview.action === "rewrite_kpi" && kpi) {
+    return <div className="rounded-xl border border-[var(--border)] bg-[var(--card-soft)] p-4 text-sm space-y-2"><div className="font-semibold text-[var(--foreground)]">{safeString(kpi.title) || "Untitled KPI"}</div>{safeString(kpi.description) && <div className="text-[var(--foreground-muted)]">{safeString(kpi.description)}</div>}<div className="flex flex-wrap gap-1.5">{[`Unit: ${safeString(kpi.unit) || "—"}`, `Direction: ${safeString(kpi.direction) || "increase"}`, `Current: ${kpi.current_value ?? 0}`, `Target: ${kpi.target_value ?? 0}`].map(c => <span key={c} className={chip}>{c}</span>)}</div></div>;
+  }
+
+  if (preview.action === "update_kpi_value") {
+    return <div className="rounded-xl border border-[var(--border)] bg-[var(--card-soft)] p-4 text-sm space-y-2"><div className="font-semibold text-[var(--foreground)]">{safeString(data.kpi_title) || "KPI Update"}</div><div className="flex flex-wrap gap-1.5">{[`New value: ${data.current_value ?? "—"}`, `Target: ${data.target_value ?? "—"}`].map(c => <span key={c} className={chip}>{c}</span>)}</div>{safeString(data.rationale) && <div className="text-[var(--foreground-muted)]">{safeString(data.rationale)}</div>}</div>;
+  }
+
+  return <pre className="overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--card-soft)] p-4 text-xs text-[var(--foreground-soft)] whitespace-pre-wrap">{JSON.stringify(data, null, 2)}</pre>;
 }
