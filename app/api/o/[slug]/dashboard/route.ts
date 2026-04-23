@@ -87,7 +87,10 @@ type DashboardResponse = {
     label: string;
     objectives: number;
     okrs: number;
-    kpis: number;
+    total_kpis: number;
+    healthy_kpis: number;
+    at_risk_kpis: number;
+    critical_kpis: number;
     open_tasks: number;
     completed_tasks: number;
   }>;
@@ -423,14 +426,21 @@ export async function GET(req: NextRequest, ctx: Ctx<{ slug: string }>) {
           )
         );
 
+        const healthyKpis = deptKpis.filter((kpi) => kpi.score >= 85).length;
+        const atRiskKpis = deptKpis.filter((kpi) => kpi.score >= 60 && kpi.score < 85).length;
+        const criticalKpis = deptKpis.filter((kpi) => kpi.score < 60).length;
+
         return {
           id: department.id,
           name: department.name,
-          score: deptScore,
-          label: deptSnapshot?.label ?? scoreLabel(deptScore),
+          score: deptKpis.length === 0 && deptObjectives.length === 0 && deptOkrs.length === 0 ? -1 : deptScore,
+          label: deptKpis.length === 0 && deptObjectives.length === 0 ? "No data" : (deptSnapshot?.label ?? scoreLabel(deptScore)),
           objectives: deptObjectives.length,
           okrs: deptOkrs.length,
-          kpis: deptKpis.length,
+          total_kpis: deptKpis.length,
+          healthy_kpis: healthyKpis,
+          at_risk_kpis: atRiskKpis,
+          critical_kpis: criticalKpis,
           open_tasks: deptTasks.filter((task) => !["done", "cancelled"].includes(task.status)).length,
           completed_tasks: deptTasks.filter((task) => task.status === "done").length,
         };

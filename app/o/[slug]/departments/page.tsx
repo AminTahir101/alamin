@@ -12,17 +12,18 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import StatCard from "@/components/ui/StatCard";
 
 type DashboardDepartment = {
-  department_id?: string;
   id?: string;
-  department_name?: string;
   name?: string;
-  department_score?: number | null;
   score?: number | null;
-  total_kpis?: number | null;
-  critical_kpis?: number | null;
-  at_risk_kpis?: number | null;
-  healthy_kpis?: number | null;
   label?: string | null;
+  total_kpis?: number | null;
+  healthy_kpis?: number | null;
+  at_risk_kpis?: number | null;
+  critical_kpis?: number | null;
+  objectives?: number | null;
+  okrs?: number | null;
+  open_tasks?: number | null;
+  completed_tasks?: number | null;
 };
 
 type DashboardResponse = {
@@ -92,6 +93,7 @@ function toneFromLabel(label?: string | null) {
   if (x.includes("on track") || x.includes("healthy")) return "success" as const;
   if (x.includes("risk")) return "warning" as const;
   if (x.includes("off") || x.includes("critical")) return "danger" as const;
+  if (x.includes("no data")) return "neutral" as const;
   return "neutral" as const;
 }
 
@@ -217,13 +219,15 @@ export default function DepartmentsPage() {
 
     const cards: DepartmentCard[] = registry.map((dept) => {
       const matched = metricById.get(dept.id) ?? metricByName.get(normalizeDepartmentName(dept.name));
-      const score = scoreValue(matched?.department_score ?? matched?.score);
-      const label = matched?.label ?? healthFromPerformance(score);
+      const rawScore = matched?.score ?? null;
+      const hasData = rawScore !== null && rawScore !== -1;
+      const score = hasData ? scoreValue(rawScore) : 0;
+      const label = matched?.label ?? (hasData ? healthFromPerformance(score) : "No data");
 
       return {
         id: dept.id,
         name: dept.name,
-        score,
+        score: hasData ? score : -1,
         total_kpis: intValue(matched?.total_kpis),
         healthy_kpis: intValue(matched?.healthy_kpis),
         at_risk_kpis: intValue(matched?.at_risk_kpis),
@@ -239,13 +243,14 @@ export default function DepartmentsPage() {
 
   const stats = useMemo(() => {
     const total = ranked.length;
-    const avgScore = total
-      ? Math.round(ranked.reduce((sum, item) => sum + item.score, 0) / total)
+    const scoredDepts = ranked.filter((item) => item.score !== -1);
+    const avgScore = scoredDepts.length
+      ? Math.round(scoredDepts.reduce((sum, item) => sum + item.score, 0) / scoredDepts.length)
       : 0;
 
-    const healthy = ranked.filter((item) => item.score >= 85).length;
-    const atRisk = ranked.filter((item) => item.score >= 60 && item.score < 85).length;
-    const critical = ranked.filter((item) => item.score < 60).length;
+    const healthy = ranked.filter((item) => item.score !== -1 && item.score >= 85).length;
+    const atRisk = ranked.filter((item) => item.score !== -1 && item.score >= 60 && item.score < 85).length;
+    const critical = ranked.filter((item) => item.score !== -1 && item.score < 60).length;
 
     return { total, avgScore, healthy, atRisk, critical };
   }, [ranked]);
@@ -404,9 +409,9 @@ export default function DepartmentsPage() {
             />
             <StatCard
               title="Average score"
-              value={numberFmt(stats.avgScore)}
+              value={stats.total === 0 ? "—" : `${numberFmt(stats.avgScore)}%`}
               hint="Across all departments"
-              tone={cardTone(stats.avgScore)}
+              tone={stats.total === 0 ? "default" : cardTone(stats.avgScore)}
             />
             <StatCard
               title="Healthy"
@@ -418,7 +423,7 @@ export default function DepartmentsPage() {
               title="Needs attention"
               value={stats.atRisk + stats.critical}
               hint={`${stats.atRisk} at risk · ${stats.critical} critical`}
-              tone="warning"
+              tone={stats.critical > 0 ? "danger" : "warning"}
             />
           </div>
         </div>
@@ -553,7 +558,7 @@ export default function DepartmentsPage() {
 
                     <div className="text-right">
                       <div className="text-3xl font-black text-[var(--foreground)]">
-                        {numberFmt(d.score)}
+                        {d.score === -1 ? "—" : `${numberFmt(d.score)}%`}
                       </div>
                       <div className="text-xs text-[var(--foreground-faint)]">Score</div>
                     </div>
