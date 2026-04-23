@@ -210,8 +210,8 @@ export default function DepartmentsPage() {
     const metricByName = new Map<string, DashboardDepartment>();
 
     for (const item of dashboardDepartments) {
-      const maybeId = String(item.department_id ?? item.id ?? "").trim();
-      const maybeName = String(item.department_name ?? item.name ?? "").trim();
+      const maybeId = String(item.id ?? "").trim();
+      const maybeName = String(item.name ?? "").trim();
 
       if (maybeId) metricById.set(maybeId, item);
       if (maybeName) metricByName.set(normalizeDepartmentName(maybeName), item);
