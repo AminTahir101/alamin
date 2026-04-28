@@ -1,0 +1,4 @@
+{
+  "apiTimeout": 600000,
+  "idleTimeout": 600000
+}
