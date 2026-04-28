@@ -169,6 +169,16 @@ body {
     linear-gradient(180deg, #f8faff 0%, #eef2f7 100%);
 }
 
+/* Arabic font override — applied when LanguageProvider sets lang="ar" on <html> */
+html[lang="ar"] body,
+html[lang="ar"] button,
+html[lang="ar"] input,
+html[lang="ar"] select,
+html[lang="ar"] textarea {
+  font-family: var(--font-almarai), Arial, Helvetica, sans-serif;
+  letter-spacing: 0;
+}
+
 button,
 input,
 select,

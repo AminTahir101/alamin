@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { supabase } from "@/lib/supabaseClient";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
 
 type ChatRole = "user" | "assistant";
 type ChatMessage = { id: string; role: ChatRole; content: string };
@@ -45,17 +46,6 @@ function extractTextFromCompleted(payload: ResponseCompletedPayload): string {
 
 function tryJson(text: string) { try { return JSON.parse(text) as Record<string, unknown>; } catch { return null; } }
 
-/* ── Quick actions shown as chips below the input ── */
-const QUICK_ACTIONS: Array<{ key: ActionType; label: string }> = [
-  { key: "chat", label: "Tell me" },
-  { key: "diagnose_underperformance", label: "Diagnose" },
-  { key: "create_okr", label: "Create OKR" },
-  { key: "generate_jtbd", label: "JTBD" },
-  { key: "create_tasks", label: "Tasks" },
-  { key: "rewrite_kpi", label: "Rewrite KPI" },
-  { key: "update_kpi_value", label: "Update KPI" },
-];
-
 const PLACEHOLDERS: Record<ActionType, string> = {
   chat: "Ask about performance, blockers, OKR quality, KPI gaps, or what to prioritize...",
   create_okr: "Create a Q2 OKR for Sales to improve qualified pipeline and close rate...",
@@ -66,14 +56,6 @@ const PLACEHOLDERS: Record<ActionType, string> = {
   update_kpi_value: "Update the MQL to SQL KPI — we closed 24 leads out of 90 MQLs this month...",
 };
 
-const STARTERS = [
-  { label: "Diagnose performance", prompt: "What is the biggest execution risk this cycle?", action: "chat" as ActionType },
-  { label: "Create OKR", prompt: "Create an OKR for improving qualified pipeline conversion.", action: "create_okr" as ActionType },
-  { label: "Generate tasks", prompt: "Create tasks for the weakest KPI in the company.", action: "create_tasks" as ActionType },
-  { label: "Rewrite a KPI", prompt: "Rewrite 'Increase revenue' into a measurable KPI with target.", action: "rewrite_kpi" as ActionType },
-];
-
-function labelForAction(a: ActionType) { return QUICK_ACTIONS.find(m => m.key === a)?.label ?? a; }
 
 async function exportPdf(message: ChatMessage, slug: string) {
   try {
@@ -118,6 +100,30 @@ function ThinkingDots() {
 }
 
 export default function OrgAiCopilot({ slug }: OrgAiCopilotProps) {
+  const { t } = useLanguage();
+  const pg = t.pages.yourAI;
+
+  const QUICK_ACTIONS = useMemo<Array<{ key: ActionType; label: string }>>(() => [
+    { key: "chat", label: pg.actionTellMe },
+    { key: "diagnose_underperformance", label: pg.actionDiagnose },
+    { key: "create_okr", label: pg.actionCreateOKR },
+    { key: "generate_jtbd", label: pg.actionJTBD },
+    { key: "create_tasks", label: pg.actionTasks },
+    { key: "rewrite_kpi", label: pg.actionRewriteKPI },
+    { key: "update_kpi_value", label: pg.actionUpdateKPI },
+  ], [pg]);
+
+  const STARTERS = useMemo(() => [
+    { label: pg.starterDiagnose, prompt: "What is the biggest execution risk this cycle?", action: "chat" as ActionType },
+    { label: pg.starterCreateOKR, prompt: "Create an OKR for improving qualified pipeline conversion.", action: "create_okr" as ActionType },
+    { label: pg.starterTasks, prompt: "Create tasks for the weakest KPI in the company.", action: "create_tasks" as ActionType },
+    { label: pg.starterRewriteKPI, prompt: "Rewrite 'Increase revenue' into a measurable KPI with target.", action: "rewrite_kpi" as ActionType },
+  ], [pg]);
+
+  const labelForAction = useCallback((a: ActionType) => {
+    return QUICK_ACTIONS.find(m => m.key === a)?.label ?? a;
+  }, [QUICK_ACTIONS]);
+
   const [action, setAction] = useState<ActionType>("chat");
   const [prompt, setPrompt] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -251,7 +257,7 @@ export default function OrgAiCopilot({ slug }: OrgAiCopilotProps) {
       const parsed = tryJson(await res.text()) as ActionPreviewResponse | null;
       if (!res.ok || !parsed?.ok || !parsed.preview) throw new Error(parsed?.error ?? "Action failed");
       setPreview({ action: action as Exclude<ActionType, "chat">, prompt: text, data: parsed.preview });
-      setSuccessMsg("Preview ready — review before saving.");
+      setSuccessMsg(pg.previewReady);
       setPrompt("");
     } catch (err) { setErrorMsg(err instanceof Error ? err.message : "Action failed"); }
     finally { setActionLoading(false); }
@@ -308,10 +314,10 @@ export default function OrgAiCopilot({ slug }: OrgAiCopilotProps) {
           {isEmpty && !isLoading && (
             <div className="flex h-full min-h-[360px] flex-col items-center justify-center px-4 text-center">
               <h2 className="text-4xl font-semibold tracking-tight text-[var(--foreground)] md:text-5xl">
-                How can I help today?
+                {pg.howCanIHelp}
               </h2>
               <p className="mt-4 text-base text-[var(--foreground-muted)]">
-                Ask a question, diagnose performance, or generate execution-ready work.
+                {pg.copilotSubtext}
               </p>
             </div>
           )}
@@ -358,7 +364,7 @@ export default function OrgAiCopilot({ slug }: OrgAiCopilotProps) {
                         <div className="mt-4 space-y-3">
                           {followUps.length > 0 && (
                             <div className="border-t border-[var(--border)] pt-3">
-                              <div className="mb-2 text-xs font-semibold uppercase tracking-widest text-[var(--foreground-faint)]">Ask next</div>
+                              <div className="mb-2 text-xs font-semibold uppercase tracking-widest text-[var(--foreground-faint)]">{pg.askNext}</div>
                               <div className="flex flex-col gap-2">
                                 {followUps.map((s) => (
                                   <button key={s} type="button"
@@ -372,7 +378,7 @@ export default function OrgAiCopilot({ slug }: OrgAiCopilotProps) {
                           )}
                           <button type="button" onClick={() => void exportPdf(message, slug)}
                             className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-3.5 py-2 text-xs text-[var(--foreground-faint)] transition hover:text-[var(--foreground)]">
-                            ↓ Export PDF
+                            ↓ {pg.exportPDF}
                           </button>
                         </div>
                       )}
@@ -396,12 +402,12 @@ export default function OrgAiCopilot({ slug }: OrgAiCopilotProps) {
                     {preview.action !== "diagnose_underperformance" && (
                       <button type="button" onClick={() => void approvePreview()} disabled={approveLoading}
                         className="inline-flex h-9 items-center rounded-xl bg-[var(--foreground)] px-4 text-sm font-semibold text-[var(--background)] transition hover:opacity-90 disabled:opacity-50">
-                        {approveLoading ? "Saving..." : "Approve & Save"}
+                        {approveLoading ? t.pages.common.saving : pg.approveAndSave}
                       </button>
                     )}
                     <button type="button" onClick={() => { setPreview(null); setSuccessMsg(null); }} disabled={approveLoading}
                       className="inline-flex h-9 items-center rounded-xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-sm font-semibold text-[var(--foreground)] transition hover:border-[var(--border-strong)] disabled:opacity-50">
-                      {preview.action === "diagnose_underperformance" ? "Close" : "Discard"}
+                      {preview.action === "diagnose_underperformance" ? t.pages.common.close : pg.discard}
                     </button>
                   </div>
                 </div>
@@ -459,7 +465,7 @@ export default function OrgAiCopilot({ slug }: OrgAiCopilotProps) {
                 )}
                 <div className="h-4 w-px bg-[var(--border)]" />
                 <span className="text-xs text-[var(--foreground-faint)]">
-                  {action === "chat" ? "Tell me anything" : `${labelForAction(action)} · preview first`}
+                  {action === "chat" ? pg.tellMeAnything : `${labelForAction(action)} · ${pg.previewFirst}`}
                 </span>
                 {/* Send — icon only */}
                 <div className="ml-auto">
@@ -498,7 +504,7 @@ export default function OrgAiCopilot({ slug }: OrgAiCopilotProps) {
                     ? "border-[var(--border-active)] bg-[var(--foreground)] text-[var(--background)]"
                     : "border-[var(--border)] bg-[var(--button-secondary-bg)] text-[var(--foreground-soft)] hover:border-[var(--border-strong)]",
                 ].join(" ")}>
-                ⊕ Files
+                {pg.filesToggle}
               </button>
             </div>
 
@@ -519,12 +525,12 @@ export default function OrgAiCopilot({ slug }: OrgAiCopilotProps) {
             {showFiles && (
               <div className="rounded-2xl border border-[var(--border)] bg-[var(--card-soft)] p-5">
                 <div className="mb-3 flex items-center justify-between">
-                  <span className="text-xs font-semibold uppercase tracking-widest text-[var(--foreground-faint)]">Context files — AI reads these in every response</span>
+                  <span className="text-xs font-semibold uppercase tracking-widest text-[var(--foreground-faint)]">{pg.contextFiles}</span>
                   <button type="button" onClick={() => setShowFiles(false)} className="text-[var(--foreground-faint)] hover:text-[var(--foreground)] text-sm">✕</button>
                 </div>
                 <button type="button" disabled={uploading} onClick={() => fileRef.current?.click()}
                   className="rounded-xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 py-2.5 text-sm font-medium text-[var(--foreground-soft)] transition hover:border-[var(--border-strong)] disabled:opacity-50">
-                  {uploading ? "Uploading..." : "↑ Attach file (PDF, DOCX, TXT, CSV, XLSX · max 2MB)"}
+                  {uploading ? pg.uploading : pg.attachFile}
                 </button>
                 {files.length > 0 && (
                   <div className="mt-3 grid gap-2">
@@ -532,11 +538,11 @@ export default function OrgAiCopilot({ slug }: OrgAiCopilotProps) {
                       <div key={f.id} className="flex items-center justify-between rounded-xl border border-[var(--border)] bg-[var(--card)] px-4 py-2.5">
                         <div>
                           <div className="max-w-[280px] truncate text-sm font-semibold text-[var(--foreground)]">{f.file_name}</div>
-                          <div className="text-xs text-[var(--foreground-faint)]">{f.file_type === "company_doc" ? "Company doc" : "Financial"} · {fmtBytes(f.size_bytes)}</div>
+                          <div className="text-xs text-[var(--foreground-faint)]">{f.file_type === "company_doc" ? pg.companyDoc : pg.financial} · {fmtBytes(f.size_bytes)}</div>
                         </div>
                         <button type="button" onClick={() => void handleDeleteFile(f.id)}
                           className="px-2 py-1 text-xs text-[var(--foreground-faint)] transition hover:text-red-500">
-                          Remove
+                          {pg.removeFile}
                         </button>
                       </div>
                     ))}

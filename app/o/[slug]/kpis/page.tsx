@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { AppPageHeader, AppShell } from "@/components/app/AppShell";
 import SectionCard from "@/components/ui/SectionCard";
 import EmptyState from "@/components/ui/EmptyState";
@@ -181,6 +182,8 @@ export default function KpisPage() {
   const params = useParams<{ slug: string }>();
   const router = useRouter();
   const orgSlug = String(params?.slug ?? "").trim();
+  const { t } = useLanguage();
+  const pg = t.pages.kpis;
 
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -362,15 +365,15 @@ export default function KpisPage() {
       topActions={
         canManage ? (
           <button type="button" onClick={openCreate} className={primaryButtonClass()}>
-            New KPI
+            {pg.newKPI}
           </button>
         ) : null
       }
     >
       <AppPageHeader
         eyebrow={cycleText}
-        title="KPIs"
-        description="Create, assign, and manage KPIs for the active cycle."
+        title={pg.title}
+        description={pg.description}
       />
 
       {msg ? (
@@ -390,55 +393,53 @@ export default function KpisPage() {
           <div>
             <div className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--foreground-faint)]">
               <span className="h-2 w-2 rounded-full bg-[var(--accent-2)]" />
-              KPI workspace
+              {pg.workspaceBadge}
             </div>
 
             <h2 className="mt-5 text-3xl font-black tracking-[-0.04em] text-[var(--foreground)]">
-              Turn raw signals into accountable performance tracking.
+              {pg.heroH2}
             </h2>
 
             <p className="mt-4 max-w-3xl text-base leading-7 text-[var(--foreground-muted)]">
-              KPIs are the measurable layer underneath your objectives and OKRs. This page lets you
-              define ownership, set targets, control direction, and keep the active cycle grounded
-              in real numbers.
+              {pg.heroBody}
             </p>
 
             <div className="mt-6 flex flex-wrap gap-3">
               <div className="rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-medium text-[var(--foreground-soft)]">
-                Assignee-based ownership
+                {pg.chipAssignee}
               </div>
               <div className="rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-medium text-[var(--foreground-soft)]">
-                Target-driven tracking
+                {pg.chipTarget}
               </div>
               <div className="rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-medium text-[var(--foreground-soft)]">
-                Department visibility
+                {pg.chipDeptVis}
               </div>
             </div>
           </div>
 
           <div className="grid gap-3">
             <MetricCard
-              label="Total KPIs"
+              label={pg.totalKPIs}
               value={String(summary.total)}
-              hint="Current KPI count"
+              hint={pg.totalKPIsLabel}
               tone="default"
             />
             <MetricCard
-              label="Active"
+              label={pg.activeLabel}
               value={String(summary.active)}
-              hint="Live KPIs in cycle"
+              hint={pg.activeDesc}
               tone="success"
             />
             <MetricCard
-              label="Assigned"
+              label={pg.assignedLabel}
               value={String(summary.assigned)}
-              hint="KPIs with an owner"
+              hint={pg.assignedDesc}
               tone="warning"
             />
             <MetricCard
-              label="At risk"
+              label={pg.atRiskLabel}
               value={String(summary.atRisk)}
-              hint="Needs intervention"
+              hint={pg.atRiskDesc}
               tone={summary.atRisk > 0 ? "danger" : "success"}
             />
           </div>
@@ -446,8 +447,8 @@ export default function KpisPage() {
       </section>
 
       <SectionCard
-        title="KPI Registry"
-        subtitle="Assigned ownership is now part of the KPI workflow."
+        title={pg.registry}
+        subtitle={pg.registrySubtitle}
         className="bg-[var(--background-panel)]"
       >
         {loading ? (
@@ -477,31 +478,31 @@ export default function KpisPage() {
                         <div className="text-lg font-bold text-[var(--foreground)]">{item.title}</div>
 
                         <StatusBadge tone={item.is_active === false ? "neutral" : "success"}>
-                          {item.is_active === false ? "Inactive" : "Active"}
+                          {item.is_active === false ? t.pages.common.inactive : t.pages.common.active}
                         </StatusBadge>
 
                         <StatusBadge tone={tone}>
                           {tone === "success"
-                            ? "On track"
+                            ? t.pages.common.onTrack
                             : tone === "warning"
-                              ? "At risk"
+                              ? t.pages.common.atRisk
                               : tone === "danger"
-                                ? "Off track"
-                                : "Not enough data"}
+                                ? t.pages.common.offTrack
+                                : t.pages.common.notEnoughData}
                         </StatusBadge>
 
                         {item.is_assigned_to_me ? (
-                          <StatusBadge tone="warning">Assigned to me</StatusBadge>
+                          <StatusBadge tone="warning">{t.pages.common.assignedToMe}</StatusBadge>
                         ) : null}
                       </div>
 
                       <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
-                        <DetailTile label="Department" value={item.department_name ?? "—"} />
-                        <DetailTile label="Current" value={formatNumber(item.current_value)} />
-                        <DetailTile label="Target" value={formatNumber(item.target_value)} />
-                        <DetailTile label="Weight" value={formatNumber(item.weight)} />
-                        <DetailTile label="Direction" value={directionLabel(item.direction)} />
-                        <DetailTile label="Assignee" value={assigned?.email ?? "Unassigned"} />
+                        <DetailTile label={t.pages.common.department} value={item.department_name ?? "—"} />
+                        <DetailTile label={t.pages.common.current} value={formatNumber(item.current_value)} />
+                        <DetailTile label={t.pages.common.target} value={formatNumber(item.target_value)} />
+                        <DetailTile label={t.pages.common.weight} value={formatNumber(item.weight)} />
+                        <DetailTile label={t.pages.common.direction} value={item.direction === "decrease" ? pg.directionDecrease : pg.directionIncrease} />
+                        <DetailTile label={t.pages.common.assignee} value={assigned?.email ?? t.pages.common.unassigned} />
                       </div>
 
                       <div className="mt-5 flex flex-wrap gap-2">
@@ -511,7 +512,7 @@ export default function KpisPage() {
                             onClick={() => openEdit(item)}
                             className={secondaryButtonClass()}
                           >
-                            Edit KPI
+                            {pg.editorEditTitle}
                           </button>
                         ) : null}
                       </div>
@@ -519,7 +520,7 @@ export default function KpisPage() {
 
                     <div className="w-full max-w-[280px] rounded-[22px] border border-[var(--border)] bg-[var(--card-subtle)] p-4">
                       <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--foreground-faint)]">
-                        KPI health
+                        {pg.kpiHealth}
                       </div>
 
                       <div className="mt-4 flex items-end justify-between gap-3">
@@ -527,7 +528,7 @@ export default function KpisPage() {
                           {progress === null ? "—" : `${Math.round(progress)}%`}
                         </div>
                         <div className="text-xs text-[var(--foreground-faint)]">
-                          {directionLabel(item.direction)} target
+                          {item.direction === "decrease" ? t.pages.common.decreaseTarget : t.pages.common.increaseTarget}
                         </div>
                       </div>
 
@@ -548,8 +549,7 @@ export default function KpisPage() {
                       </div>
 
                       <div className="mt-4 text-sm leading-6 text-[var(--foreground-muted)]">
-                        Keep KPI ownership visible and measurable before AI turns weak signals into
-                        OKRs and execution work.
+                        {pg.kpiHealthDesc}
                       </div>
                     </div>
                   </div>
@@ -559,8 +559,8 @@ export default function KpisPage() {
           </div>
         ) : (
           <EmptyState
-            title="No KPIs yet"
-            description="Create your first KPI and assign it to a department owner or employee."
+            title={pg.noTitle}
+            description={pg.noDesc}
           />
         )}
       </SectionCard>
@@ -571,13 +571,13 @@ export default function KpisPage() {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
-                  KPI editor
+                  {pg.editorLabel}
                 </div>
                 <div className="mt-3 text-3xl font-black tracking-[-0.04em] text-[var(--foreground)]">
-                  {editingId ? "Edit KPI" : "Create KPI"}
+                  {editingId ? pg.editorEditTitle : pg.editorCreateTitle}
                 </div>
                 <div className="mt-2 text-sm leading-7 text-[var(--foreground-muted)]">
-                  Add or change assignee ownership directly from the KPI form.
+                  {pg.editorSubtitle}
                 </div>
               </div>
 
@@ -586,13 +586,13 @@ export default function KpisPage() {
                 onClick={closeForm}
                 className={secondaryButtonClass()}
               >
-                Close
+                {t.pages.common.close}
               </button>
             </div>
 
             <div className="mt-6 grid gap-4 md:grid-cols-2">
               <div>
-                <FieldShell label="Title">
+                <FieldShell label={t.pages.common.fieldTitle}>
                   <input
                     value={form.title}
                     onChange={(e) => setForm((s) => ({ ...s, title: e.target.value }))}
@@ -603,7 +603,7 @@ export default function KpisPage() {
               </div>
 
               <div>
-                <FieldShell label="Department">
+                <FieldShell label={t.pages.common.department}>
                   <select
                     value={form.department_id}
                     onChange={(e) => setForm((s) => ({ ...s, department_id: e.target.value }))}
@@ -620,7 +620,7 @@ export default function KpisPage() {
               </div>
 
               <div>
-                <FieldShell label="Current value">
+                <FieldShell label={t.pages.common.fieldCurrentValue}>
                   <input
                     value={form.current_value}
                     onChange={(e) => setForm((s) => ({ ...s, current_value: e.target.value }))}
@@ -631,7 +631,7 @@ export default function KpisPage() {
               </div>
 
               <div>
-                <FieldShell label="Target value">
+                <FieldShell label={t.pages.common.fieldTargetValue}>
                   <input
                     value={form.target_value}
                     onChange={(e) => setForm((s) => ({ ...s, target_value: e.target.value }))}
@@ -642,7 +642,7 @@ export default function KpisPage() {
               </div>
 
               <div>
-                <FieldShell label="Weight">
+                <FieldShell label={t.pages.common.weight}>
                   <input
                     value={form.weight}
                     onChange={(e) => setForm((s) => ({ ...s, weight: e.target.value }))}
@@ -653,7 +653,7 @@ export default function KpisPage() {
               </div>
 
               <div>
-                <FieldShell label="Direction">
+                <FieldShell label={t.pages.common.direction}>
                   <select
                     value={form.direction}
                     onChange={(e) =>
@@ -664,20 +664,20 @@ export default function KpisPage() {
                     }
                     className={selectClass()}
                   >
-                    <option value="increase">Increase</option>
-                    <option value="decrease">Decrease</option>
+                    <option value="increase">{pg.directionIncrease}</option>
+                    <option value="decrease">{pg.directionDecrease}</option>
                   </select>
                 </FieldShell>
               </div>
 
               <div className="md:col-span-2">
-                <FieldShell label="Assignee">
+                <FieldShell label={t.pages.common.assignee}>
                   <select
                     value={form.owner_user_id}
                     onChange={(e) => setForm((s) => ({ ...s, owner_user_id: e.target.value }))}
                     className={selectClass()}
                   >
-                    <option value="">Unassigned</option>
+                    <option value="">{t.pages.common.unassigned}</option>
                     {memberOptions.map((member) => (
                       <option key={member.value} value={member.value}>
                         {member.label}
@@ -689,7 +689,7 @@ export default function KpisPage() {
 
               {!editingId ? (
                 <div className="md:col-span-2">
-                  <FieldShell label="Initial notes">
+                  <FieldShell label={t.pages.common.fieldNotes}>
                     <textarea
                       value={form.notes}
                       onChange={(e) => setForm((s) => ({ ...s, notes: e.target.value }))}
@@ -708,7 +708,7 @@ export default function KpisPage() {
                   type="checkbox"
                   className="h-4 w-4"
                 />
-                <div className="text-sm font-medium text-[var(--foreground-soft)]">Active KPI</div>
+                <div className="text-sm font-medium text-[var(--foreground-soft)]">{pg.activeKPILabel}</div>
               </div>
             </div>
 
@@ -719,7 +719,7 @@ export default function KpisPage() {
                 disabled={saving}
                 className={primaryButtonClass()}
               >
-                {saving ? "Saving..." : editingId ? "Save changes" : "Create KPI"}
+                {saving ? t.pages.common.saving : editingId ? t.pages.common.save : pg.editorCreateTitle}
               </button>
 
               <button
@@ -728,7 +728,7 @@ export default function KpisPage() {
                 disabled={saving}
                 className={secondaryButtonClass()}
               >
-                Cancel
+                {t.pages.common.cancel}
               </button>
             </div>
           </div>

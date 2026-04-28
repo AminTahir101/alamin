@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Almarai } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
-import { SpeedInsights } from "@vercel/speed-insights/next";  // ← ADD
+import { SpeedInsights } from "@vercel/speed-insights/next";
+import { LanguageProvider } from "@/lib/i18n/LanguageContext";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -12,6 +13,12 @@ const geistSans = Geist({
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+});
+
+const almarai = Almarai({
+  variable: "--font-almarai",
+  subsets: ["arabic"],
+  weight: ["300", "400", "700", "800"],
 });
 
 export const metadata: Metadata = {
@@ -25,13 +32,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark" data-theme="night">
+    <html lang="en" dir="ltr" className="dark" data-theme="night" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} min-h-screen bg-background font-sans text-foreground antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} ${almarai.variable} min-h-screen bg-background font-sans text-foreground antialiased`}
+        suppressHydrationWarning
       >
-        {children}
+        <LanguageProvider>
+          {children}
+        </LanguageProvider>
         <Analytics />
-        <SpeedInsights />  {/* ← ADD */}
+        <SpeedInsights />
       </body>
     </html>
   );

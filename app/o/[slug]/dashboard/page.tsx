@@ -11,6 +11,7 @@ import ProgressBar from "@/components/ui/ProgressBar";
 import SectionCard from "@/components/ui/SectionCard";
 import StatCard from "@/components/ui/StatCard";
 import StatusBadge from "@/components/ui/StatusBadge";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
 
 type Cycle = { id: string; year: number; quarter: number; status: string };
 type Company = {
@@ -124,8 +125,8 @@ function fmtDate(iso?: string | null) {
   return date.toLocaleDateString();
 }
 
-function cycleLabel(cycle?: Cycle | null) {
-  if (!cycle) return "No active cycle";
+function cycleLabel(cycle?: Cycle | null, fallback = "No active cycle") {
+  if (!cycle) return fallback;
   return `Q${cycle.quarter} ${cycle.year} · ${cycle.status}`;
 }
 
@@ -165,6 +166,26 @@ export default function DashboardPage() {
   const params = useParams<{ slug: string }>();
   const router = useRouter();
   const orgSlug = String(params?.slug ?? "").trim();
+  const { t } = useLanguage();
+  const pg = t.pages.dashboard;
+
+  const ls = (status: string | null | undefined): string => {
+    if (!status) return "—";
+    const lower = status.toLowerCase().replace(/_/g, " ");
+    const c = t.pages.common;
+    const m: Record<string, string> = {
+      "on track": c.onTrack,
+      "off track": c.offTrack,
+      "at risk": c.atRisk,
+      "blocked": c.blocked,
+      "healthy": c.healthy,
+      "completed": c.completed,
+      "done": c.completed,
+      "active": c.active,
+      "inactive": c.inactive,
+    };
+    return m[lower] ?? status;
+  };
 
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -314,40 +335,34 @@ export default function DashboardPage() {
 
   const aiHeadline = useMemo(() => {
     if (stats.overdueTasks > 0) {
-      return `${numberFmt(stats.overdueTasks)} overdue task${
-        stats.overdueTasks === 1 ? "" : "s"
-      } are slowing execution.`;
+      return stats.overdueTasks === 1
+        ? pg.aiHeadlineOverdueSingle
+        : pg.aiHeadlineOverduePlural.replace("{count}", numberFmt(stats.overdueTasks));
     }
     if (stats.atRiskKpis > 0) {
-      return `${numberFmt(stats.atRiskKpis)} KPI${
-        stats.atRiskKpis === 1 ? "" : "s"
-      } need attention this cycle.`;
+      return stats.atRiskKpis === 1
+        ? pg.aiHeadlineKPISingle
+        : pg.aiHeadlineKPIPlural.replace("{count}", numberFmt(stats.atRiskKpis));
     }
-    if (stats.companyScore >= 85) {
-      return "Execution is healthy and the workspace looks on track.";
-    }
-    if (stats.companyScore >= 60) {
-      return "Execution is moving, but a few pressure points need action.";
-    }
-    return "The current cycle is under pressure and needs intervention.";
-  }, [stats.atRiskKpis, stats.companyScore, stats.overdueTasks]);
+    if (stats.companyScore >= 85) return pg.aiHeadlineHealthy;
+    if (stats.companyScore >= 60) return pg.aiHeadlineMoving;
+    return pg.aiHeadlinePressure;
+  }, [stats.atRiskKpis, stats.companyScore, stats.overdueTasks, pg]);
 
   const aiSubtext = useMemo(() => {
     if (aiReport?.summary) return aiReport.summary;
-    if (!cycle) {
-      return "No active cycle is configured yet. Create or activate a cycle to make the dashboard meaningful.";
-    }
-    return "Use the AI workspace to generate OKRs, diagnose blockers, and translate performance signals into action.";
-  }, [aiReport, cycle]);
+    if (!cycle) return pg.aiSubtextNoCycle;
+    return pg.aiSubtextDefault;
+  }, [aiReport, cycle, pg]);
 
   const quickActions = useMemo(
     () => [
-      { label: "Open AI Workspace", href: `/o/${orgSlug}/your-ai` },
-      { label: "Create Objective", href: `/o/${orgSlug}/objectives` },
-      { label: "View KPIs", href: `/o/${orgSlug}/kpis` },
-      { label: "Review Tasks", href: `/o/${orgSlug}/tasks` },
+      { label: pg.openAI, href: `/o/${orgSlug}/your-ai` },
+      { label: pg.qaCreateObjective, href: `/o/${orgSlug}/objectives` },
+      { label: pg.qaViewKPIs, href: `/o/${orgSlug}/kpis` },
+      { label: pg.qaReviewTasks, href: `/o/${orgSlug}/tasks` },
     ],
-    [orgSlug]
+    [orgSlug, pg]
   );
 
   const refreshDashboard = useCallback(async () => {
@@ -366,7 +381,7 @@ export default function DashboardPage() {
             href={`/o/${orgSlug}/your-ai`}
             className="inline-flex h-11 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-5 text-sm font-medium text-[var(--foreground-soft)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
           >
-            Open AI Workspace
+            {pg.openAI}
           </Link>
           <button
             type="button"
@@ -374,15 +389,15 @@ export default function DashboardPage() {
             disabled={refreshing}
             className="inline-flex h-11 items-center justify-center rounded-full bg-[var(--foreground)] px-5 text-sm font-semibold text-[var(--background)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {refreshing ? "Refreshing..." : "Refresh dashboard"}
+            {refreshing ? pg.refreshing : pg.refresh}
           </button>
         </div>
       }
     >
       <AppPageHeader
-        eyebrow={cycleLabel(cycle)}
-        title="Dashboard"
-        description="Your company in one view. Performance, execution, the weak spots, and what to do about them."
+        eyebrow={cycleLabel(cycle, t.pages.common.noActiveCycle)}
+        title={pg.title}
+        description={pg.description}
       />
 
       {loading ? (
@@ -407,7 +422,7 @@ export default function DashboardPage() {
               <div>
                 <div className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
                   <span className="h-2 w-2 rounded-full bg-[var(--accent-2)]" />
-                  AI Command
+                  {pg.aiCommand}
                 </div>
 
                 <h2 className="mt-5 text-3xl font-semibold tracking-tight text-[var(--foreground)] md:text-4xl">
@@ -433,19 +448,19 @@ export default function DashboardPage() {
 
               <div className="grid gap-3">
                 <InsightMetric
-                  label="Company health"
+                  label={pg.companyHealth}
                   value={`${numberFmt(stats.companyScore)}%`}
                   tone={healthTone(stats.companyScore)}
-                  hint={company?.label ?? "No label"}
+                  hint={company?.label ? ls(company.label) : t.pages.common.notEnoughData}
                 />
                 <InsightMetric
-                  label="KPIs at risk"
+                  label={pg.kpisAtRisk}
                   value={numberFmt(stats.atRiskKpis)}
                   tone={stats.atRiskKpis > 0 ? "warning" : "success"}
-                  hint={`${numberFmt(stats.onTrackKpis)} on track`}
+                  hint={`${numberFmt(stats.onTrackKpis)} ${pg.onTrackSuffix}`}
                 />
                 <InsightMetric
-                  label="Open tasks"
+                  label={pg.openTasks}
                   value={numberFmt(stats.openTasks)}
                   tone={
                     stats.overdueTasks > 0
@@ -454,9 +469,7 @@ export default function DashboardPage() {
                         ? "warning"
                         : "info"
                   }
-                  hint={`${numberFmt(stats.overdueTasks)} overdue · ${numberFmt(
-                    stats.blockedTasks
-                  )} blocked`}
+                  hint={`${numberFmt(stats.overdueTasks)} ${pg.overdueSuffix} · ${numberFmt(stats.blockedTasks)} ${pg.blockedSuffix}`}
                 />
               </div>
             </div>
@@ -464,54 +477,52 @@ export default function DashboardPage() {
 
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <StatCard
-              title="Company score"
+              title={pg.companyScore}
               value={numberFmt(stats.companyScore)}
-              hint={company?.label ?? "No score available"}
-              trend="Blended from KPI, OKR, objective, and task execution"
+              hint={company?.label ? ls(company.label) : t.pages.common.notEnoughData}
+              trend={pg.currentHealthBlend}
               tone={healthTone(stats.companyScore)}
             />
             <StatCard
-              title="Objectives"
+              title={pg.objectives}
               value={numberFmt(stats.activeObjectives)}
-              hint={`${numberFmt(stats.completedObjectives)} completed or fully progressed`}
+              hint={`${numberFmt(stats.completedObjectives)} ${pg.completedOrProgressed}`}
               tone="info"
             />
             <StatCard
-              title="Open tasks"
+              title={pg.openTasks}
               value={numberFmt(stats.openTasks)}
-              hint={`${numberFmt(stats.completedTasks)} completed · ${numberFmt(
-                stats.overdueTasks
-              )} overdue`}
+              hint={`${numberFmt(stats.completedTasks)} ${pg.completedSuffix} · ${numberFmt(stats.overdueTasks)} ${pg.overdueSuffix}`}
               tone={stats.overdueTasks > 0 ? "warning" : "success"}
             />
             <StatCard
-              title="Active OKRs and KPIs"
+              title={pg.activeOKRsKPIs}
               value={`${numberFmt(stats.activeOkrs)} / ${numberFmt(stats.activeKpis)}`}
-              hint={`Task completion ${numberFmt(stats.taskCompletionRate)}%`}
+              hint={`${pg.taskCompletionPrefix} ${numberFmt(stats.taskCompletionRate)}%`}
               tone="default"
             />
           </div>
 
           <div className="mt-6 grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
             <SectionCard
-              title="Executive summary"
+              title={pg.executiveSummary}
               subtitle={
                 visibility
-                  ? `View scope: ${visibility} · Role: ${role ?? "member"}`
-                  : "Live company-level execution signal"
+                  ? `${pg.viewScopePrefix} ${visibility} · ${pg.rolePrefix} ${role ?? "member"}`
+                  : pg.executiveSummarySubtitle
               }
             >
               <div className="grid gap-5 lg:grid-cols-[0.95fr_1.05fr]">
                 <div className="rounded-[22px] border border-[var(--border)] bg-[var(--card-soft)] p-5">
                   <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
-                    Current health
+                    {pg.currentHealth}
                   </div>
                   <div className="mt-4 flex items-center justify-between gap-4">
                     <div className="text-5xl font-black tracking-[-0.04em] text-[var(--foreground)]">
                       {numberFmt(stats.companyScore)}
                     </div>
                     <StatusBadge tone={toneFromStatus(company?.label)}>
-                      {company?.label ?? "No label"}
+                      {company?.label ? ls(company.label) : t.pages.common.notEnoughData}
                     </StatusBadge>
                   </div>
                   <div className="mt-5">
@@ -524,28 +535,28 @@ export default function DashboardPage() {
                 </div>
 
                 <div className="grid gap-3">
-                  <SummaryStrip label="Cycle" value={cycleLabel(cycle)} />
-                  <SummaryStrip label="Departments" value={numberFmt(departments.length)} />
+                  <SummaryStrip label={pg.cycleLabel} value={cycleLabel(cycle, t.pages.common.noActiveCycle)} />
+                  <SummaryStrip label={pg.departments} value={numberFmt(departments.length)} />
                   <SummaryStrip
-                    label="Tasks completed"
+                    label={pg.tasksCompleted}
                     value={`${numberFmt(stats.taskCompletionRate)}%`}
                   />
-                  <SummaryStrip label="KPIs at risk" value={numberFmt(stats.atRiskKpis)} />
-                  <SummaryStrip label="Blocked tasks" value={numberFmt(stats.blockedTasks)} />
+                  <SummaryStrip label={pg.kpisAtRisk} value={numberFmt(stats.atRiskKpis)} />
+                  <SummaryStrip label={pg.blockedTasks} value={numberFmt(stats.blockedTasks)} />
                 </div>
               </div>
             </SectionCard>
 
             <SectionCard
-              title="Mach3 analysis"
-              subtitle="Your latest AI-generated performance report"
+              title={pg.mach3}
+              subtitle={pg.mach3Subtitle}
               className="bg-[linear-gradient(180deg,rgba(109,94,252,0.08),rgba(55,207,255,0.03))]"
               actions={
                 <Link
                   href={`/o/${orgSlug}/your-ai`}
                   className="inline-flex h-10 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-sm font-semibold text-[var(--foreground-soft)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
                 >
-                  Open AI
+                  {pg.openAIBtn}
                 </Link>
               }
             >
@@ -569,41 +580,41 @@ export default function DashboardPage() {
 
                   <div className="mt-5 grid gap-3">
                     <ActionChip
-                      label="Find what's underperforming"
+                      label={pg.aiActionFind}
                       href={`/o/${orgSlug}/your-ai`}
                     />
                     <ActionChip
-                      label="Turn weak KPIs into OKRs"
+                      label={pg.aiActionTurnKPIs}
                       href={`/o/${orgSlug}/your-ai`}
                     />
                     <ActionChip
-                      label="Break OKRs into daily tasks"
+                      label={pg.aiActionBreakOKRs}
                       href={`/o/${orgSlug}/tasks`}
                     />
                   </div>
                 </div>
               ) : (
                 <EmptyState
-                  title="No report yet"
-                  description="Run a company analysis to generate your first Mach3 report. It summarizes what's working, what's slipping, and what to do next."
+                  title={pg.noReportTitle}
+                  description={pg.noReportDesc}
                 />
               )}
             </SectionCard>
           </div>
 
           <div className="mt-6 grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-            <SectionCard title="Department performance" subtitle="Who's ahead and who needs help">
+            <SectionCard title={pg.departmentPerf} subtitle={pg.departmentPerfSubtitle}>
               {departments.length ? (
                 <div className="grid gap-5">
                   <div className="grid gap-4 lg:grid-cols-2">
                     <DepartmentBucket
-                      title="Leading the quarter"
-                      subtitle="Departments scoring highest right now"
+                      title={pg.leading}
+                      subtitle={pg.leadingSubtitle}
                       rows={strongestDepartments}
                     />
                     <DepartmentBucket
-                      title="Needs attention"
-                      subtitle="Departments scoring lowest right now"
+                      title={pg.needsAttention}
+                      subtitle={pg.needsAttentionSubtitle}
                       rows={weakestDepartments}
                     />
                   </div>
@@ -621,10 +632,10 @@ export default function DashboardPage() {
                             </div>
                             <div className="mt-2 flex flex-wrap items-center gap-2">
                               <StatusBadge tone={toneFromStatus(department.label)}>
-                                {department.label}
+                                {ls(department.label)}
                               </StatusBadge>
                               <span className="text-xs text-[var(--foreground-faint)]">
-                                {department.objectives} objectives
+                                {department.objectives} {pg.objectivesSuffix}
                               </span>
                               <span className="text-xs text-[var(--foreground-faint)]">
                                 {department.okrs} OKRs
@@ -634,7 +645,7 @@ export default function DashboardPage() {
                               </span>
                             </div>
                             <div className="mt-3 text-sm text-[var(--foreground-muted)]">
-                              {department.open_tasks} open tasks · {department.completed_tasks} completed
+                              {department.open_tasks} {pg.openSuffix} · {department.completed_tasks} {pg.completedSuffix}
                             </div>
                           </div>
 
@@ -651,37 +662,37 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 <EmptyState
-                  title="No departments yet"
-                  description="Set up your departments in Settings. The leaderboard shows up once each department has KPIs or OKRs linked to it."
+                  title={pg.noDepartmentsTitle}
+                  description={pg.noDepartmentsDesc}
                 />
               )}
             </SectionCard>
 
-            <SectionCard title="Needs your attention" subtitle="The most urgent things to fix this week">
+            <SectionCard title={pg.urgentSection} subtitle={pg.urgentSubtitle}>
               <div className="grid gap-3">
                 <AlertRow
-                  title="Overdue tasks"
+                  title={pg.overdueTasks}
                   value={numberFmt(stats.overdueTasks)}
                   tone={stats.overdueTasks > 0 ? "danger" : "success"}
-                  desc="Tasks that should already be completed."
+                  desc={pg.overdueTasksDesc}
                 />
                 <AlertRow
-                  title="Blocked tasks"
+                  title={pg.blockedTasks}
                   value={numberFmt(stats.blockedTasks)}
                   tone={stats.blockedTasks > 0 ? "warning" : "success"}
-                  desc="Tasks marked as blocked by teams."
+                  desc={pg.blockedTasksDesc}
                 />
                 <AlertRow
-                  title="KPIs falling behind"
+                  title={pg.kpisFalling}
                   value={numberFmt(stats.atRiskKpis)}
                   tone={stats.atRiskKpis > 0 ? "warning" : "success"}
-                  desc="KPIs scoring below the healthy threshold."
+                  desc={pg.kpisFallingDesc}
                 />
                 <AlertRow
-                  title="Cycle progress"
+                  title={pg.cycleProgress}
                   value={cycle ? cycle.status : "none"}
                   tone={cycle ? "info" : "danger"}
-                  desc="The active reporting and planning period."
+                  desc={pg.cycleProgressDesc}
                 />
               </div>
             </SectionCard>
@@ -689,8 +700,8 @@ export default function DashboardPage() {
 
           <div className="mt-6 grid gap-6 xl:grid-cols-[1.05fr_1.2fr]">
             <SectionCard
-              title="KPIs to watch"
-              subtitle="The KPIs slipping furthest from target"
+              title={pg.kpisToWatch}
+              subtitle={pg.kpisToWatchSubtitle}
             >
               {topRiskKpis.length ? (
                 <div className="grid gap-4">
@@ -712,7 +723,7 @@ export default function DashboardPage() {
                                 {kpi.title}
                               </div>
                               <StatusBadge tone={toneFromStatus(kpi.label)}>
-                                {kpi.label}
+                                {ls(kpi.label)}
                               </StatusBadge>
                             </div>
 
@@ -729,20 +740,20 @@ export default function DashboardPage() {
                                 {numberFmt(kpi.current_value)} / {numberFmt(kpi.target_value)}
                               </span>
                               <span>•</span>
-                              <span>Updated {fmtDate(kpi.updated_at)}</span>
+                              <span>{pg.updatedPrefix} {fmtDate(kpi.updated_at)}</span>
                             </div>
                           </div>
 
                           <div className="w-full max-w-[220px]">
                             <div className="mb-2 flex items-center justify-between text-sm text-[var(--foreground-muted)]">
-                              <span>Score</span>
+                              <span>{pg.scoreLabel}</span>
                               <span className="font-semibold text-[var(--foreground)]">
                                 {numberFmt(kpi.score)}%
                               </span>
                             </div>
                             <ProgressBar value={kpi.score} />
                             <div className="mt-4 text-sm text-[var(--foreground-muted)]">
-                              Progress to target:{" "}
+                              {pg.progressToTarget}{" "}
                               <span className="font-semibold text-[var(--foreground)]">
                                 {numberFmt(completion)}%
                               </span>
@@ -755,15 +766,15 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 <EmptyState
-                  title="No KPIs yet"
-                  description="Add KPIs for this cycle to start tracking performance. Each KPI gets a score based on current value vs target."
+                  title={pg.noKPIsTitle}
+                  description={pg.noKPIsDesc}
                 />
               )}
             </SectionCard>
 
             <SectionCard
-              title="Work in motion"
-              subtitle="Tasks that still need to get done"
+              title={pg.workInMotion}
+              subtitle={pg.workInMotionSubtitle}
             >
               {executionPulse.length ? (
                 <div className="grid gap-3">
@@ -779,7 +790,7 @@ export default function DashboardPage() {
                           </div>
                           <div className="mt-2 flex flex-wrap items-center gap-2">
                             <StatusBadge tone={toneFromStatus(task.status)}>
-                              {task.status}
+                              {ls(task.status)}
                             </StatusBadge>
                             <StatusBadge tone={taskUrgencyTone(task.priority)}>
                               {task.priority}
@@ -790,7 +801,7 @@ export default function DashboardPage() {
                           </div>
                         </div>
                         <div className="text-sm text-[var(--foreground-muted)]">
-                          Due {fmtDate(task.due_date)}
+                          {pg.duePrefix} {fmtDate(task.due_date)}
                         </div>
                       </div>
                     </div>
@@ -798,8 +809,8 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 <EmptyState
-                  title="No tasks yet"
-                  description="Generate tasks from your OKRs in AI Setup, or add them manually. This panel shows everything still in progress."
+                  title={pg.noTasksTitle}
+                  description={pg.noTasksDesc}
                 />
               )}
             </SectionCard>
@@ -807,8 +818,8 @@ export default function DashboardPage() {
 
           <div className="mt-6 grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
             <SectionCard
-              title="Objectives in focus"
-              subtitle="The objectives with the most ground to cover"
+              title={pg.objectivesInFocus}
+              subtitle={pg.objectivesInFocusSubtitle}
             >
               {topObjectives.length ? (
                 <div className="grid gap-3">
@@ -824,7 +835,7 @@ export default function DashboardPage() {
                           </div>
                           <div className="mt-2 flex flex-wrap items-center gap-2">
                             <StatusBadge tone={toneFromStatus(objective.status)}>
-                              {objective.status}
+                              {ls(objective.status)}
                             </StatusBadge>
                             <span className="text-xs text-[var(--foreground-faint)]">
                               {objective.department_name ?? "Company-wide"}
@@ -846,37 +857,37 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 <EmptyState
-                  title="No objectives yet"
-                  description="Set your first objectives in AI Setup. Each one groups a set of OKRs that ladder up to your strategy."
+                  title={pg.noObjectivesTitle}
+                  description={pg.noObjectivesDesc}
                 />
               )}
             </SectionCard>
 
             <SectionCard
-              title="Jump into the work"
-              subtitle="One click into whatever's next"
+              title={pg.jumpInto}
+              subtitle={pg.jumpIntoSubtitle}
               className="bg-[linear-gradient(180deg,rgba(109,94,252,0.08),rgba(55,207,255,0.03))]"
             >
               <div className="grid gap-3">
                 <QuickLinkCard
                   href={`/o/${orgSlug}/your-ai`}
-                  title="Diagnose company performance"
-                  desc="Use AI to explain weak execution and generate next steps."
+                  title={pg.diagnose}
+                  desc={pg.diagnoseDesc}
                 />
                 <QuickLinkCard
                   href={`/o/${orgSlug}/objectives`}
-                  title="Review objectives"
-                  desc="Tighten the strategy layer and connect weak objectives to ownership."
+                  title={pg.reviewObjectives}
+                  desc={pg.reviewObjectivesDesc}
                 />
                 <QuickLinkCard
                   href={`/o/${orgSlug}/kpis`}
-                  title="Update KPI values"
-                  desc="Refresh the underlying signals driving the dashboard."
+                  title={pg.updateKPIs}
+                  desc={pg.updateKPIsDesc}
                 />
                 <QuickLinkCard
                   href={`/o/${orgSlug}/tasks`}
-                  title="Resolve blocked tasks"
-                  desc="Review blocked, overdue, and high-priority tasks."
+                  title={pg.resolveBlocked}
+                  desc={pg.resolveBlockedDesc}
                 />
               </div>
             </SectionCard>
@@ -952,6 +963,8 @@ function DepartmentBucket({
   subtitle: string;
   rows: DepartmentRow[];
 }) {
+  const { t } = useLanguage();
+  const pg = t.pages.dashboard;
   return (
     <div className="rounded-[22px] border border-[var(--border)] bg-[var(--card-soft)] p-4">
       <div className="text-sm font-semibold text-[var(--foreground)]">{title}</div>
@@ -969,7 +982,7 @@ function DepartmentBucket({
                   {row.name}
                 </div>
                 <div className="mt-1 text-xs text-[var(--foreground-faint)]">
-                  {row.open_tasks} open · {row.completed_tasks} completed
+                  {row.open_tasks} {pg.openSuffix} · {row.completed_tasks} {pg.completedSuffix}
                 </div>
               </div>
               <div className="text-sm font-semibold text-[var(--foreground)]">
@@ -979,7 +992,7 @@ function DepartmentBucket({
           ))
         ) : (
           <div className="rounded-[16px] border border-[var(--border)] bg-[var(--card-subtle)] px-4 py-3 text-sm text-[var(--foreground-muted)]">
-            No departments yet.
+            {pg.noDeptYet}
           </div>
         )}
       </div>

@@ -5,6 +5,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
+import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
 
 type Org = {
   id: string;
@@ -102,6 +104,8 @@ async function fetchUserOrgs(accessToken: string): Promise<Org[]> {
 
 export default function AuthPage() {
   const router = useRouter();
+  const { t } = useLanguage();
+  const at = t.auth;
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -342,30 +346,29 @@ export default function AuthPage() {
               <div className="text-sm font-semibold tracking-[0.22em] text-[var(--foreground-soft)]">
                 ALAMIN
               </div>
-              <div className="text-sm text-[var(--foreground-muted)]">
-                AI Performance Intelligence
-              </div>
+              <div className="text-sm text-[var(--foreground-muted)]">{t.brand.tagline}</div>
             </div>
           </Link>
 
           <nav className="hidden items-center gap-8 text-sm text-[var(--foreground-muted)] md:flex">
             <Link href="/#features" className="transition hover:text-[var(--foreground)]">
-              Features
+              {t.nav.features}
             </Link>
             <Link href="/#security" className="transition hover:text-[var(--foreground)]">
-              Security
+              {t.nav.security}
             </Link>
             <Link href="/#pricing" className="transition hover:text-[var(--foreground)]">
-              Pricing
+              {t.nav.pricing}
             </Link>
           </nav>
 
           <div className="flex items-center gap-3">
+            <LanguageSwitcher />
             <Link
               href="/"
               className="inline-flex h-11 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-5 text-sm font-medium text-[var(--foreground-soft)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
             >
-              Back to site
+              {t.nav.backToSite}
             </Link>
           </div>
         </div>
@@ -375,38 +378,35 @@ export default function AuthPage() {
         <section className="flex flex-col justify-center">
           <div className="inline-flex w-fit items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-xs font-medium text-[var(--foreground-muted)]">
             <span className="h-2 w-2 rounded-full bg-[var(--accent-2)]" />
-            Secure workspace access for strategy, execution, and AI
+            {at.badge}
           </div>
 
           <h1 className="mt-6 max-w-3xl text-5xl font-semibold leading-[1.02] tracking-tight text-[var(--foreground)] md:text-6xl">
-            Access your company workspace
+            {at.h1}
             <span className="block bg-[linear-gradient(135deg,var(--foreground)_0%,#9b8cff_38%,#64dcff_100%)] bg-clip-text text-transparent">
-              and continue execution.
+              {at.h1Gradient}
             </span>
           </h1>
 
           <p className="mt-6 max-w-2xl text-lg leading-8 text-[var(--foreground-muted)]">
-            Log in to your workspace. If you were invited by your company admin, you will be taken
-            directly into your organization onboarding flow.
+            {at.body}
           </p>
 
           <div className="mt-10 grid gap-4 sm:grid-cols-3">
-            <InfoPill value="1" label="workspace per organization" />
-            <InfoPill value="AI" label="strategy to execution setup" />
-            <InfoPill value="Secure" label="organization email access" />
+            {at.pills.map((pill) => (
+              <InfoPill key={pill.label} value={pill.value} label={pill.label} />
+            ))}
           </div>
 
           <div className="mt-10 grid gap-4 md:grid-cols-2">
-            <SignalCard
-              eyebrow="Invited users"
-              title="Onboarding redirect built in"
-              desc="If your account was invited into a new organization, login routes you directly into that onboarding flow."
-            />
-            <SignalCard
-              eyebrow="Existing customers"
-              title="Multi-org access supported"
-              desc="If your account belongs to more than one organization, you can choose which company workspace to enter."
-            />
+            {at.signalCards.map((card) => (
+              <SignalCard
+                key={card.eyebrow}
+                eyebrow={card.eyebrow}
+                title={card.title}
+                desc={card.desc}
+              />
+            ))}
           </div>
         </section>
 
@@ -419,22 +419,22 @@ export default function AuthPage() {
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
-                        One more step
+                        {at.noMembership.eyebrow}
                       </div>
                       <h2 className="mt-3 text-3xl font-semibold tracking-tight text-[var(--foreground)]">
-                        Your workspace isn&apos;t ready yet
+                        {at.noMembership.heading}
                       </h2>
                       <p className="mt-3 max-w-md text-sm leading-7 text-[var(--foreground-muted)]">
                         {userEmailSignedIn ? (
                           <>
-                            Signed in as{" "}
+                            {at.noMembership.signedInAs}{" "}
                             <span className="font-semibold text-[var(--foreground)]">
                               {userEmailSignedIn}
                             </span>
-                            . This account isn&apos;t attached to any workspace yet.
+                            . {at.noMembership.notAttached}
                           </>
                         ) : (
-                          "This account isn't attached to any workspace yet."
+                          at.noMembership.notAttached
                         )}
                       </p>
                     </div>
@@ -448,14 +448,14 @@ export default function AuthPage() {
                     >
                       <div>
                         <div className="text-base font-semibold text-[var(--foreground)]">
-                          Create a new workspace
+                          {at.noMembership.createWorkspace.title}
                         </div>
                         <div className="mt-1 text-sm text-[var(--foreground-muted)]">
-                          Set up a fresh company workspace where you&apos;re the owner.
+                          {at.noMembership.createWorkspace.desc}
                         </div>
                       </div>
                       <span className="rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-3 py-1 text-xs font-semibold text-[var(--foreground-soft)] transition group-hover:border-[var(--border-strong)] group-hover:bg-[var(--button-secondary-hover)]">
-                        Start
+                        {at.noMembership.createWorkspace.cta}
                       </span>
                     </button>
                     <button
@@ -465,25 +465,24 @@ export default function AuthPage() {
                     >
                       <div>
                         <div className="text-base font-semibold text-[var(--foreground)]">
-                          Sign out
+                          {at.noMembership.signOut.title}
                         </div>
                         <div className="mt-1 text-sm text-[var(--foreground-muted)]">
-                          Log in with a different account or wait for a new invite.
+                          {at.noMembership.signOut.desc}
                         </div>
                       </div>
                       <span className="rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-3 py-1 text-xs font-semibold text-[var(--foreground-soft)] transition group-hover:border-[var(--border-strong)] group-hover:bg-[var(--button-secondary-hover)]">
-                        Sign out
+                        {at.noMembership.signOut.cta}
                       </span>
                     </button>
                   </div>
 
                   <div className="mt-6 rounded-[22px] border border-[var(--border)] bg-[var(--card-subtle)] p-4">
                     <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
-                      Expecting an invite?
+                      {at.noMembership.expectingInvite.eyebrow}
                     </div>
                     <div className="mt-3 text-sm leading-6 text-[var(--foreground-muted)]">
-                      If your admin recently invited you, check your email — the invite link takes
-                      you directly into your workspace. If you can&apos;t find it, ask them to resend.
+                      {at.noMembership.expectingInvite.body}
                     </div>
                   </div>
                 </>
@@ -492,14 +491,13 @@ export default function AuthPage() {
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
-                        Workspace selection
+                        {at.orgPicker.eyebrow}
                       </div>
                       <h2 className="mt-3 text-3xl font-semibold tracking-tight text-[var(--foreground)]">
-                        Choose your company
+                        {at.orgPicker.heading}
                       </h2>
                       <p className="mt-3 max-w-md text-sm leading-7 text-[var(--foreground-muted)]">
-                        This account belongs to multiple organizations. Pick the workspace you want
-                        to enter.
+                        {at.orgPicker.subtext}
                       </p>
                     </div>
 
@@ -508,7 +506,7 @@ export default function AuthPage() {
                       onClick={() => void logout()}
                       className="inline-flex h-11 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-5 text-sm font-semibold text-[var(--foreground-soft)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
                     >
-                      Logout
+                      {at.orgPicker.logout}
                     </button>
                   </div>
 
@@ -525,7 +523,7 @@ export default function AuthPage() {
                           <div className="mt-1 text-sm text-[var(--foreground-faint)]">/{org.slug}</div>
                         </div>
                         <span className="rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-3 py-1 text-xs font-semibold text-[var(--foreground-soft)] transition group-hover:border-[var(--border-strong)] group-hover:bg-[var(--button-secondary-hover)]">
-                          Open
+                          {at.orgPicker.open}
                         </span>
                       </button>
                     ))}
@@ -536,21 +534,21 @@ export default function AuthPage() {
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
-                        Secure access
+                        {at.form.eyebrow}
                       </div>
                       <h2 className="mt-3 text-3xl font-semibold tracking-tight text-[var(--foreground)]">
-                        Welcome back
+                        {at.form.heading}
                       </h2>
                       <p className="mt-3 text-sm leading-7 text-[var(--foreground-muted)]">
-                        Log in to access your workspace and continue execution.
+                        {at.form.subtext}
                       </p>
                     </div>
                   </div>
 
                   <form onSubmit={handleSubmit} className="mt-6 grid gap-4">
-                    <FieldShell label="Work email">
+                    <FieldShell label={at.form.emailLabel}>
                       <input
-                        placeholder="name@company.com"
+                        placeholder={at.form.emailPlaceholder}
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         type="email"
@@ -560,9 +558,9 @@ export default function AuthPage() {
                       />
                     </FieldShell>
 
-                    <FieldShell label="Password">
+                    <FieldShell label={at.form.passwordLabel}>
                       <input
-                        placeholder="Enter your password"
+                        placeholder={at.form.passwordPlaceholder}
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         type="password"
@@ -577,7 +575,7 @@ export default function AuthPage() {
                       disabled={loading || resolvingTenant}
                       className="mt-2 inline-flex h-12 items-center justify-center rounded-full bg-[var(--foreground)] px-5 text-sm font-semibold text-[var(--background)] transition hover:opacity-92 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      {loading || resolvingTenant ? "Please wait..." : "Log in"}
+                      {loading || resolvingTenant ? at.form.submitting : at.form.submit}
                     </button>
                   </form>
 
@@ -589,25 +587,12 @@ export default function AuthPage() {
 
                   <div className="mt-6 rounded-[22px] border border-[var(--border)] bg-[var(--card-subtle)] p-4">
                     <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
-                      What you get inside
+                      {at.form.miniFeatures.eyebrow}
                     </div>
                     <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                      <MiniFeature
-                        title="Structured onboarding"
-                        desc="Invited users route directly into the right company onboarding flow."
-                      />
-                      <MiniFeature
-                        title="Organization email only"
-                        desc="Company access stays tied to the right workspace and membership layer."
-                      />
-                      <MiniFeature
-                        title="AI-ready setup"
-                        desc="Prepare strategy, departments, and ownership before execution begins."
-                      />
-                      <MiniFeature
-                        title="Tenant-safe access"
-                        desc="Keep company data scoped to the right workspace."
-                      />
+                      {at.form.miniFeatures.items.map((item) => (
+                        <MiniFeature key={item.title} title={item.title} desc={item.desc} />
+                      ))}
                     </div>
                   </div>
                 </>

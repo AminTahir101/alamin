@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { AppShell } from "@/components/app/AppShell";
 import OrgAiCopilot from "@/components/ai/OrgAiCopilot";
 
@@ -17,6 +18,8 @@ export default function YourAiPage() {
   const params = useParams<{ slug: string }>();
   const router = useRouter();
   const orgSlug = String(params?.slug ?? "").trim();
+  const { t } = useLanguage();
+  const pg = t.pages.yourAI;
 
   const [loading, setLoading] = useState(true);
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
@@ -59,14 +62,14 @@ export default function YourAiPage() {
             onClick={() => router.push(`/o/${encodeURIComponent(orgSlug)}/dashboard`)}
             className="inline-flex h-9 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-sm font-medium text-[var(--foreground-soft)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
           >
-            Dashboard
+            {pg.backToDashboard}
           </button>
           <button
             type="button"
             onClick={() => router.push(`/o/${encodeURIComponent(orgSlug)}/tasks`)}
             className="inline-flex h-9 items-center justify-center rounded-full bg-[var(--foreground)] px-4 text-sm font-semibold text-[var(--background)] transition hover:opacity-90"
           >
-            Tasks
+            {pg.goToTasks}
           </button>
         </div>
       }

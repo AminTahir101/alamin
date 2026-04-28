@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { AppPageHeader, AppShell } from "@/components/app/AppShell";
 import SectionCard from "@/components/ui/SectionCard";
 import CycleManager, { type CycleSummary } from "@/components/cycles/CycleManager";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -134,6 +135,8 @@ export default function AiSetupOkrsPage() {
   const params = useParams<{ slug: string }>();
   const router = useRouter();
   const orgSlug = String(params?.slug ?? "").trim();
+  const { t } = useLanguage();
+  const pg = t.pages.okrs;
 
   const [session, setSession] = useState<Session | null>(null);
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
@@ -446,14 +449,14 @@ export default function AiSetupOkrsPage() {
   return (
     <AppShell slug={orgSlug} sessionEmail={sessionEmail}>
       <AppPageHeader
-        eyebrow="AI Setup · Step 2"
-        title="Review your AI-generated OKRs"
-        description="Your KPIs are set. Now decide what to push on this cycle. ALAMIN has drafted objectives and key results for each department based on your strategy and applied KPIs. Review, edit, and approve."
+        eyebrow={pg.eyebrow}
+        title={pg.title}
+        description={pg.descriptionFull}
       />
 
       <SectionCard
-        title="Active reporting cycle"
-        subtitle="All generated OKRs are tied to this cycle"
+        title={pg.activeCycle}
+        subtitle={pg.activeCycleSubtitle}
         actions={
           <CycleManager
             slug={orgSlug}
@@ -469,15 +472,15 @@ export default function AiSetupOkrsPage() {
         <div className="grid gap-4 sm:grid-cols-3">
           <div className={softCardClass()}>
             <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-faint)]">
-              Current cycle
+              {pg.currentCycle}
             </div>
             <div className="mt-2 text-base font-semibold text-[var(--foreground)]">
-              {cycle ? `Q${cycle.quarter} ${cycle.year}` : "No active cycle"}
+              {cycle ? `Q${cycle.quarter} ${cycle.year}` : t.pages.common.noActiveCycle}
             </div>
           </div>
           <div className={softCardClass()}>
             <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-faint)]">
-              Departments
+              {pg.departments}
             </div>
             <div className="mt-2 text-base font-semibold text-[var(--foreground)]">
               {departments.length}
@@ -485,10 +488,10 @@ export default function AiSetupOkrsPage() {
           </div>
           <div className={softCardClass()}>
             <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-faint)]">
-              Progress
+              {pg.progress}
             </div>
             <div className="mt-2 text-base font-semibold text-[var(--foreground)]">
-              {appliedCount} / {departments.length} complete
+              {appliedCount} / {departments.length} {pg.completeSuffix}
             </div>
           </div>
         </div>
@@ -504,15 +507,15 @@ export default function AiSetupOkrsPage() {
         <SectionCard>
           <div className="flex items-center justify-center gap-3 py-10 text-sm text-[var(--foreground-muted)]">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--foreground)]" />
-            Loading your OKR setup…
+            {pg.loadingOKRs}
           </div>
         </SectionCard>
       )}
 
       {!loading && departments.length === 0 && (
         <SectionCard
-          title="No departments found"
-          subtitle="You need departments before OKRs can be generated"
+          title={pg.noDepartments}
+          subtitle={pg.noDepartmentsDesc}
         >
           <button
             type="button"
@@ -521,7 +524,7 @@ export default function AiSetupOkrsPage() {
             }
             className={actionPrimaryClass()}
           >
-            Back to KPI setup
+            {pg.backToKPIs}
           </button>
         </SectionCard>
       )}
@@ -539,15 +542,15 @@ export default function AiSetupOkrsPage() {
                 title={dept.name}
                 subtitle={
                   status === "applied"
-                    ? "Objectives applied to your workspace"
+                    ? pg.deptStatusApplied
                     : status === "partial"
-                      ? "Some objectives applied, review the rest"
-                      : "Review objectives, edit, then apply each one"
+                      ? pg.deptStatusPartial
+                      : pg.deptStatusReview
                 }
                 actions={
                   status === "applied" ? (
                     <span className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-300">
-                      Applied
+                      {pg.applied}
                     </span>
                   ) : null
                 }
@@ -555,7 +558,7 @@ export default function AiSetupOkrsPage() {
                 {status === "generating" && (
                   <div className="flex items-center gap-3 py-6 text-sm text-[var(--foreground-muted)]">
                     <div className="h-5 w-5 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--foreground)]" />
-                    Generating objectives for {dept.name}…
+                    {pg.generatingFor} {dept.name}…
                   </div>
                 )}
 
@@ -572,7 +575,7 @@ export default function AiSetupOkrsPage() {
                       }
                       className={actionGhostClass()}
                     >
-                      Retry generation
+                      {pg.retryGeneration}
                     </button>
                   </div>
                 )}
@@ -626,10 +629,10 @@ export default function AiSetupOkrsPage() {
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="text-sm text-[var(--foreground-muted)]">
               {allDeptsApplied
-                ? "All departments have OKRs applied. You're ready to go."
-                : `Apply ${departments.length - appliedCount} more department${
-                    departments.length - appliedCount === 1 ? "" : "s"
-                  } to finish OKR setup, or skip and configure later.`}
+                ? pg.allApplied
+                : departments.length - appliedCount === 1
+                  ? pg.applyMoreSingle
+                  : pg.applyMorePlural.replace("{count}", String(departments.length - appliedCount))}
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <button
@@ -639,7 +642,7 @@ export default function AiSetupOkrsPage() {
                 }
                 className={actionGhostClass()}
               >
-                Back to KPIs
+                {pg.backToKPIs}
               </button>
               <button
                 type="button"
@@ -648,7 +651,7 @@ export default function AiSetupOkrsPage() {
                 }
                 className={actionPrimaryClass()}
               >
-                {allDeptsApplied ? "Continue to dashboard" : "Skip to dashboard"}
+                {allDeptsApplied ? pg.continueBtn : pg.skipBtn}
               </button>
             </div>
           </div>
@@ -690,13 +693,15 @@ function ObjectiveCard({
   onKrToggle,
   onApply,
 }: ObjectiveCardProps) {
+  const { t } = useLanguage();
+  const pg = t.pages.okrs;
   return (
     <div className={`${softCardClass()} ${isApplied ? "opacity-70" : ""}`}>
       {/* Objective rationale */}
       {editable.rationale && (
         <div className="mb-4 rounded-xl border border-[var(--border)] bg-[var(--background-elevated)] px-3 py-2">
           <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-faint)]">
-            Why this objective
+            {pg.whyObjective}
           </div>
           <div className="mt-1 text-xs leading-5 text-[var(--foreground-muted)]">
             {editable.rationale}
@@ -707,7 +712,7 @@ function ObjectiveCard({
       {/* Objective title */}
       <div className="space-y-2">
         <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-faint)]">
-          Objective
+          {t.pages.common.objective}
         </label>
         <input
           type="text"
@@ -764,7 +769,7 @@ function ObjectiveCard({
                     <div className="flex-1 space-y-3">
                       <div>
                         <label className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-faint)]">
-                          Key result
+                          {pg.keyResultLabel}
                         </label>
                         <input
                           type="text"
@@ -780,7 +785,7 @@ function ObjectiveCard({
                       {kr.why_recommended && (
                         <div className="rounded-lg border border-[var(--border)] bg-[var(--background-elevated)] px-3 py-2">
                           <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-faint)]">
-                            Why this KR
+                            {pg.whyKR}
                           </div>
                           <div className="mt-0.5 text-xs text-[var(--foreground-muted)]">
                             {kr.why_recommended}
@@ -791,7 +796,7 @@ function ObjectiveCard({
                       {kr.link_to_kpi_title && (
                         <div className="rounded-lg border border-blue-400/30 bg-blue-500/10 px-3 py-2">
                           <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-blue-300">
-                            Linked KPI
+                            {pg.linkedKPI}
                           </div>
                           <div className="mt-0.5 text-xs text-blue-200">
                             {kr.link_to_kpi_title}
@@ -802,7 +807,7 @@ function ObjectiveCard({
                       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                         <div>
                           <label className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-faint)]">
-                            Unit
+                            {pg.unitLabel}
                           </label>
                           <input
                             type="text"
@@ -821,7 +826,7 @@ function ObjectiveCard({
                         </div>
                         <div>
                           <label className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-faint)]">
-                            Start
+                            {pg.startLabel}
                           </label>
                           <input
                             type="number"
@@ -840,7 +845,7 @@ function ObjectiveCard({
                         </div>
                         <div>
                           <label className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-faint)]">
-                            Current
+                            {t.pages.common.current}
                           </label>
                           <input
                             type="number"
@@ -859,7 +864,7 @@ function ObjectiveCard({
                         </div>
                         <div>
                           <label className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-faint)]">
-                            Target
+                            {t.pages.common.target}
                           </label>
                           <input
                             type="number"
@@ -895,13 +900,13 @@ function ObjectiveCard({
             onClick={onApply}
             className={actionPrimaryClass()}
           >
-            {isApplying ? "Applying…" : "Apply this objective"}
+            {isApplying ? pg.applying : pg.applyBtn}
           </button>
         </div>
       )}
       {isApplied && (
         <div className="mt-5 rounded-2xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
-          ✓ Objective applied to workspace
+          {pg.objectiveApplied}
         </div>
       )}
     </div>

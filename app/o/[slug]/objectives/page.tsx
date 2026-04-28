@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { AppPageHeader, AppShell } from "@/components/app/AppShell";
 import SectionCard from "@/components/ui/SectionCard";
 import EmptyState from "@/components/ui/EmptyState";
@@ -101,6 +102,8 @@ export default function ObjectivesPage() {
   const params = useParams<{ slug: string }>();
   const router = useRouter();
   const orgSlug = String(params?.slug ?? "");
+  const { t } = useLanguage();
+  const pg = t.pages.objectives;
 
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -303,15 +306,15 @@ export default function ObjectivesPage() {
             onClick={openCreate}
             className="inline-flex h-11 items-center justify-center rounded-full bg-[var(--foreground)] px-5 text-sm font-semibold text-[var(--background)] transition hover:opacity-90"
           >
-            New objective
+            {pg.newObjective}
           </button>
         ) : null
       }
     >
       <AppPageHeader
         eyebrow={cycleText}
-        title="Objectives"
-        description="Company and department goals for the active cycle, linked directly to measurable KPIs."
+        title={pg.title}
+        description={pg.description}
       />
 
       <div className="space-y-6">
@@ -329,31 +332,31 @@ export default function ObjectivesPage() {
 
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <MetricCard
-            label="Total objectives"
+            label={pg.total}
             value={String(stats.total)}
-            hint="Current registry size"
+            hint={pg.totalLabel}
           />
           <MetricCard
-            label="Completed"
+            label={pg.completedLabel}
             value={String(stats.completed)}
-            hint="Objectives marked completed"
+            hint={pg.completedDesc}
           />
           <MetricCard
-            label="At risk"
+            label={pg.atRiskLabel}
             value={String(stats.atRisk)}
-            hint="Needs executive attention"
+            hint={pg.atRiskDesc}
           />
           <MetricCard
-            label="Average progress"
+            label={pg.avgProgress}
             value={`${stats.avgProgress}%`}
-            hint="Across all active objectives"
+            hint={pg.avgProgressLabel}
           />
         </section>
 
         {openForm ? (
           <SectionCard
-            title={editingId ? "Edit objective" : "Create objective"}
-            subtitle="Define the goal, owner, department, and KPI linkage."
+            title={editingId ? pg.editorEditTitle : pg.editorCreateTitle}
+            subtitle={pg.editorSubtitle}
             className="bg-[var(--background-panel)]"
           >
             <div className="grid gap-4 md:grid-cols-2">
@@ -470,7 +473,7 @@ export default function ObjectivesPage() {
                 disabled={saving}
                 className="inline-flex h-11 items-center justify-center rounded-full bg-[var(--foreground)] px-5 text-sm font-semibold text-[var(--background)] transition hover:opacity-90 disabled:opacity-60"
               >
-                {saving ? "Saving..." : editingId ? "Save changes" : "Create objective"}
+                {saving ? t.pages.common.saving : editingId ? t.pages.common.save : pg.editorCreateTitle}
               </button>
 
               <button
@@ -485,8 +488,8 @@ export default function ObjectivesPage() {
         ) : null}
 
         <SectionCard
-          title="Objective registry"
-          subtitle="Current goals, ownership, and KPI linkage."
+          title={pg.registry}
+          subtitle={pg.registrySubtitle}
           className="bg-[var(--background-panel)]"
         >
           {loading ? (
@@ -500,8 +503,8 @@ export default function ObjectivesPage() {
             </div>
           ) : objectives.length === 0 ? (
             <EmptyState
-              title="No objectives yet"
-              description="Create the first objective for this cycle so OKRs and execution can be built on top of it."
+              title={pg.noTitle}
+              description={pg.noDesc}
             />
           ) : (
             <div className="grid gap-4 xl:grid-cols-2">
@@ -541,17 +544,17 @@ export default function ObjectivesPage() {
                   ) : null}
 
                   <div className="mt-4 text-sm text-[var(--foreground-muted)]">
-                    Owner:{" "}
+                    {t.pages.common.owner}{" "}
                     <span className="font-medium text-[var(--foreground)]">
                       {row.owner_user_id
                         ? memberLabel.get(row.owner_user_id) ?? row.owner_user_id
-                        : "Unassigned"}
+                        : t.pages.common.unassigned}
                     </span>
                   </div>
 
                   <div className="mt-4">
                     <div className="mb-2 text-xs uppercase tracking-[0.16em] text-[var(--foreground-faint)]">
-                      Linked KPIs
+                      {pg.linkedKPIs}
                     </div>
 
                     <div className="flex flex-wrap gap-2">
@@ -566,7 +569,7 @@ export default function ObjectivesPage() {
                         ))
                       ) : (
                         <span className="text-sm text-[var(--foreground-faint)]">
-                          No linked KPIs
+                          {pg.noLinkedKPIs}
                         </span>
                       )}
                     </div>

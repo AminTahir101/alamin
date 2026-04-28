@@ -9,6 +9,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { AppPageHeader, AppShell } from "@/components/app/AppShell";
 import SectionCard from "@/components/ui/SectionCard";
 import StatusBadge from "@/components/ui/StatusBadge";
@@ -52,6 +53,8 @@ export default function CyclesPage() {
   const params = useParams<{ slug: string }>();
   const router = useRouter();
   const slug = String(params?.slug ?? "").trim();
+  const { t } = useLanguage();
+  const pg = t.pages.cycles;
 
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -190,8 +193,8 @@ export default function CyclesPage() {
   return (
     <AppShell slug={slug} sessionEmail={sessionEmail}>
       <AppPageHeader
-        title="Performance cycles"
-        description="Each cycle represents a quarter or custom period. Objectives, OKRs, KPIs, and tasks are linked to the active cycle."
+        title={pg.title}
+        description={pg.description}
         actions={
           <div className="flex gap-2">
             <button
@@ -199,7 +202,7 @@ export default function CyclesPage() {
               onClick={() => router.push(`/o/${slug}/settings`)}
               className="inline-flex h-11 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-5 text-sm font-semibold text-[var(--foreground)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
             >
-              Back to settings
+              {pg.backToSettings}
             </button>
             <button
               type="button"
@@ -207,7 +210,7 @@ export default function CyclesPage() {
               disabled={showForm}
               className="inline-flex h-11 items-center justify-center rounded-full bg-[var(--foreground)] px-5 text-sm font-semibold text-[var(--background)] transition hover:opacity-90 disabled:opacity-60"
             >
-              Create new cycle
+              {pg.createNew}
             </button>
           </div>
         }
@@ -228,7 +231,7 @@ export default function CyclesPage() {
       {showForm ? (
         <div className="mt-6">
           <SectionCard
-            title="Create new cycle"
+            title={pg.createNew}
             subtitle="The previous active cycle will be marked as completed"
             className="bg-[var(--background-panel)]"
           >
@@ -285,7 +288,7 @@ export default function CyclesPage() {
 
       <div className="mt-6">
         <SectionCard
-          title="All cycles"
+          title={pg.allCycles}
           subtitle={`${cycles.length} cycle${cycles.length === 1 ? "" : "s"} for this workspace`}
           className="bg-[var(--background-panel)]"
         >
@@ -297,8 +300,8 @@ export default function CyclesPage() {
             </div>
           ) : cycles.length === 0 ? (
             <EmptyState
-              title="No cycles yet"
-              description="Create your first performance cycle to start tracking objectives, OKRs, and KPIs."
+              title={pg.noCyclesTitle}
+              description={pg.noCyclesDesc}
             />
           ) : (
             <div className="grid gap-3">
@@ -339,7 +342,7 @@ export default function CyclesPage() {
                             disabled={updating === cycle.id}
                             className="inline-flex h-9 items-center justify-center rounded-full border border-emerald-500/20 bg-emerald-500/10 px-4 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-500/15 disabled:opacity-60 dark:text-emerald-200"
                           >
-                            {updating === cycle.id ? "Updating…" : "Set active"}
+                            {updating === cycle.id ? t.pages.common.loading : pg.setActive}
                           </button>
                         ) : null}
                         {isActive ? (
@@ -349,7 +352,7 @@ export default function CyclesPage() {
                             disabled={updating === cycle.id}
                             className="inline-flex h-9 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-xs font-semibold text-[var(--foreground)] transition hover:border-[var(--border-strong)] disabled:opacity-60"
                           >
-                            {updating === cycle.id ? "Updating…" : "Mark completed"}
+                            {updating === cycle.id ? t.pages.common.loading : pg.markCompleted}
                           </button>
                         ) : null}
                         {cycle.status === "completed" ? (

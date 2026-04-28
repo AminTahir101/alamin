@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { AppPageHeader, AppShell } from "@/components/app/AppShell";
 import SectionCard from "@/components/ui/SectionCard";
 import EmptyState from "@/components/ui/EmptyState";
@@ -185,6 +186,8 @@ export default function TasksPage() {
   const params = useParams<{ slug: string }>();
   const router = useRouter();
   const orgSlug = String(params?.slug ?? "");
+  const { t } = useLanguage();
+  const pg = t.pages.tasks;
 
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -382,15 +385,15 @@ export default function TasksPage() {
       topActions={
         canManage ? (
           <button type="button" onClick={openCreate} className={primaryButtonClass()}>
-            New task
+            {pg.newTask}
           </button>
         ) : null
       }
     >
       <AppPageHeader
         eyebrow={cycleText}
-        title="Tasks"
-        description="Execution work created from JTBD clusters, OKRs, key results, and KPI ownership."
+        title={pg.title}
+        description={pg.description}
       />
 
       <div className="space-y-6">
@@ -411,44 +414,43 @@ export default function TasksPage() {
             <div>
               <div className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--foreground-faint)]">
                 <span className="h-2 w-2 rounded-full bg-[var(--accent-2)]" />
-                Execution board
+                {pg.executionBoardBadge}
               </div>
 
               <h2 className="mt-5 text-3xl font-black tracking-[-0.04em] text-[var(--foreground)]">
-                Turn plans into owned work and visible follow-through.
+                {pg.heroH2}
               </h2>
 
               <p className="mt-4 max-w-3xl text-base leading-7 text-[var(--foreground-muted)]">
-                Tasks are where JTBD clusters, OKRs, key results, and KPI pressure become actual execution.
-                This page is your operating layer for assignment, urgency, and delivery.
+                {pg.heroBody}
               </p>
 
               <div className="mt-6 flex flex-wrap gap-3">
                 <div className="rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-medium text-[var(--foreground-soft)]">
-                  Linked to strategy
+                  {pg.chipLinked}
                 </div>
                 <div className="rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-medium text-[var(--foreground-soft)]">
-                  Assignable to owners
+                  {pg.chipAssignable}
                 </div>
                 <div className="rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-medium text-[var(--foreground-soft)]">
-                  Built for execution visibility
+                  {pg.chipExecution}
                 </div>
               </div>
             </div>
 
             <div className="grid gap-3">
-              <MetricCard label="Total tasks" value={String(summary.total)} hint="All execution items" tone="default" />
-              <MetricCard label="Open work" value={String(summary.open)} hint="Still needs progress" tone="info" />
-              <MetricCard label="Blocked" value={String(summary.blocked)} hint="Needs intervention" tone={summary.blocked > 0 ? "danger" : "success"} />
-              <MetricCard label="Assigned" value={String(summary.assigned)} hint="Tasks with an owner" tone="warning" />
+              <MetricCard label={pg.total} value={String(summary.total)} hint={pg.totalLabel} tone="default" />
+              <MetricCard label={pg.openWork} value={String(summary.open)} hint={pg.openWorkLabel} tone="info" />
+              <MetricCard label={pg.blockedLabel} value={String(summary.blocked)} hint={pg.blockedDesc} tone={summary.blocked > 0 ? "danger" : "success"} />
+              <MetricCard label={pg.assignedLabel} value={String(summary.assigned)} hint={pg.assignedDesc} tone="warning" />
             </div>
           </div>
         </section>
 
         {openForm ? (
           <SectionCard
-            title={editingId ? "Edit task" : "Create task"}
-            subtitle="Assign the work item and connect it to the right execution chain."
+            title={editingId ? pg.editorEditTitle : pg.editorCreateTitle}
+            subtitle={pg.editorSubtitle}
             className="bg-[var(--background-panel)]"
           >
             <div className="grid gap-4 md:grid-cols-2">
@@ -627,18 +629,18 @@ export default function TasksPage() {
 
             <div className="mt-5 flex gap-3">
               <button type="button" onClick={save} disabled={saving} className={primaryButtonClass()}>
-                {saving ? "Saving..." : editingId ? "Save changes" : "Create task"}
+                {saving ? t.pages.common.saving : editingId ? t.pages.common.save : pg.editorCreateTitle}
               </button>
               <button type="button" onClick={closeForm} className={secondaryButtonClass()}>
-                Cancel
+                {t.pages.common.cancel}
               </button>
             </div>
           </SectionCard>
         ) : null}
 
         <SectionCard
-          title="Execution board"
-          subtitle="Live task registry across all JTBD clusters."
+          title={pg.board}
+          subtitle={pg.boardSubtitle}
           className="bg-[var(--background-panel)]"
         >
           {loading ? (
@@ -652,8 +654,8 @@ export default function TasksPage() {
             </div>
           ) : tasks.length === 0 ? (
             <EmptyState
-              title="No tasks yet"
-              description="Create the first execution item and assign it to an owner."
+              title={pg.noTitle}
+              description={pg.noDesc}
             />
           ) : (
             <div className="grid gap-4 xl:grid-cols-2">
@@ -677,7 +679,7 @@ export default function TasksPage() {
                       </div>
                     </div>
 
-                    {task.is_assigned_to_me ? <StatusBadge tone="info">Assigned to me</StatusBadge> : null}
+                    {task.is_assigned_to_me ? <StatusBadge tone="info">{pg.assignedToMe}</StatusBadge> : null}
                   </div>
 
                   {task.description ? (
@@ -688,7 +690,7 @@ export default function TasksPage() {
 
                   <div className="mt-4 grid gap-3 md:grid-cols-2">
                     <DetailTile
-                      label="Cluster"
+                      label={t.pages.common.cluster}
                       value={
                         task.jtbd_cluster_id
                           ? clusterTitleMap.get(task.jtbd_cluster_id) ??
@@ -698,19 +700,19 @@ export default function TasksPage() {
                       }
                     />
                     <DetailTile
-                      label="Owner"
+                      label={t.pages.common.ownerLabel}
                       value={
                         task.assigned_to_user_id
                           ? memberLabel.get(task.assigned_to_user_id) ?? task.assigned_to_user_id
-                          : "Unassigned"
+                          : t.pages.common.unassigned
                       }
                     />
-                    <DetailTile label="Objective" value={task.objective_title ?? "—"} />
+                    <DetailTile label={t.pages.common.objective} value={task.objective_title ?? "—"} />
                     <DetailTile label="OKR" value={task.okr_title ?? "—"} />
-                    <DetailTile label="Key Result" value={task.key_result_title ?? "—"} />
-                    <DetailTile label="KPI" value={task.kpi_title ?? "—"} />
-                    <DetailTile label="Due date" value={fmtDate(task.due_date)} />
-                    <DetailTile label="Department" value={task.department_name ?? "—"} />
+                    <DetailTile label={t.pages.common.keyResult} value={task.key_result_title ?? "—"} />
+                    <DetailTile label={pg.kpi} value={task.kpi_title ?? "—"} />
+                    <DetailTile label={t.pages.common.dueDate} value={fmtDate(task.due_date)} />
+                    <DetailTile label={t.pages.common.department} value={task.department_name ?? "—"} />
                   </div>
 
                   {canManage ? (

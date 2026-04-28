@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { AppPageHeader, AppShell } from "@/components/app/AppShell";
 import SectionCard from "@/components/ui/SectionCard";
 import EmptyState from "@/components/ui/EmptyState";
@@ -94,6 +95,8 @@ export default function MyWorkPage() {
   const params = useParams<{ slug: string }>();
   const router = useRouter();
   const orgSlug = String(params?.slug ?? "");
+  const { t } = useLanguage();
+  const pg = t.pages.myWork;
 
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -241,11 +244,11 @@ export default function MyWorkPage() {
                 ) : null}
 
                 <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-                  <InfoTile label="Objective" value={task.objective_title ?? "—"} />
+                  <InfoTile label={t.pages.common.objective} value={task.objective_title ?? "—"} />
                   <InfoTile label="OKR" value={task.okr_title ?? "—"} />
-                  <InfoTile label="Key Result" value={task.key_result_title ?? "—"} />
-                  <InfoTile label="KPI" value={task.kpi_title ?? "—"} />
-                  <InfoTile label="Due date" value={formatDate(task.due_date)} />
+                  <InfoTile label={t.pages.common.keyResult} value={task.key_result_title ?? "—"} />
+                  <InfoTile label={t.pages.tasks.kpi} value={task.kpi_title ?? "—"} />
+                  <InfoTile label={t.pages.common.dueDate} value={formatDate(task.due_date)} />
                 </div>
 
                 <div className="mt-5 flex flex-wrap gap-2">
@@ -256,7 +259,7 @@ export default function MyWorkPage() {
                       onClick={() => updateStatus(task.id, "in_progress")}
                       className={buttonClass("secondary")}
                     >
-                      {savingId === task.id ? "Updating..." : "Start"}
+                      {savingId === task.id ? pg.updating : pg.startBtn}
                     </button>
                   ) : null}
 
@@ -267,7 +270,7 @@ export default function MyWorkPage() {
                       onClick={() => updateStatus(task.id, "blocked")}
                       className={buttonClass("danger")}
                     >
-                      {savingId === task.id ? "Updating..." : "Block"}
+                      {savingId === task.id ? pg.updating : pg.blockBtn}
                     </button>
                   ) : null}
 
@@ -278,7 +281,7 @@ export default function MyWorkPage() {
                       onClick={() => updateStatus(task.id, "done")}
                       className={buttonClass("success")}
                     >
-                      {savingId === task.id ? "Updating..." : "Complete"}
+                      {savingId === task.id ? pg.updating : pg.completeBtn}
                     </button>
                   ) : null}
 
@@ -289,7 +292,7 @@ export default function MyWorkPage() {
                       onClick={() => updateStatus(task.id, "todo")}
                       className={buttonClass("secondary")}
                     >
-                      {savingId === task.id ? "Updating..." : "Move to To do"}
+                      {savingId === task.id ? pg.updating : pg.backToTodo}
                     </button>
                   ) : null}
                 </div>
@@ -322,8 +325,8 @@ export default function MyWorkPage() {
     >
       <AppPageHeader
         eyebrow={cycleText}
-        title="My Work"
-        description="Tasks assigned to you, grouped by execution state and tied directly to objectives, OKRs, key results, and KPIs."
+        title={pg.title}
+        description={pg.description}
       />
 
       <section className="mb-6 overflow-hidden rounded-[30px] border border-[var(--border)] bg-[var(--background-panel)] p-6 alamin-shadow">
@@ -331,24 +334,23 @@ export default function MyWorkPage() {
           <div>
             <div className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--foreground-faint)]">
               <span className="h-2 w-2 rounded-full bg-[var(--accent-2)]" />
-              Personal execution board
+              {pg.personalBoardBadge}
             </div>
 
             <h2 className="mt-5 text-3xl font-black tracking-[-0.04em] text-[var(--foreground)]">
-              Stay focused on what is assigned to you.
+              {pg.heroH2}
             </h2>
 
             <p className="mt-4 max-w-3xl text-base leading-7 text-[var(--foreground-muted)]">
-              This page gives you a clean personal work queue. Move tasks across statuses, see what
-              supports what, and focus on overdue or high-priority execution first.
+              {pg.heroBody}
             </p>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
-            <StatCard title="Assigned tasks" value={stats.total} hint="Everything assigned to you" />
-            <StatCard title="In progress" value={stats.inProgress} hint="Currently moving" tone="info" />
-            <StatCard title="Blocked" value={stats.blocked} hint="Needs intervention" tone="warning" />
-            <StatCard title="Overdue" value={stats.overdue} hint="Past due date" tone="danger" />
+            <StatCard title={pg.assignedTasks} value={stats.total} hint={pg.assignedTasksLabel} />
+            <StatCard title={pg.inProgress} value={stats.inProgress} hint={pg.inProgressLabel} tone="info" />
+            <StatCard title={pg.blockedLabel} value={stats.blocked} hint={pg.blockedDesc} tone="warning" />
+            <StatCard title={pg.overdue} value={stats.overdue} hint={pg.overdueLabel} tone="danger" />
           </div>
         </div>
       </section>
@@ -376,23 +378,23 @@ export default function MyWorkPage() {
           </>
         ) : tasks.length === 0 ? (
           <EmptyState
-            title="Nothing assigned yet"
-            description="When tasks are assigned to you, they will show here with direct links to the objective, OKR, key result, and KPI they support."
+            title={pg.noTitle}
+            description={pg.noDesc}
           />
         ) : (
           <>
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <StatCard title="To do" value={stats.todo} hint="Ready to start" />
-              <StatCard title="In progress" value={stats.inProgress} hint="Active work" tone="info" />
-              <StatCard title="Blocked" value={stats.blocked} hint="Needs help" tone="warning" />
-              <StatCard title="Completed" value={stats.done} hint="Finished items" tone="success" />
+              <StatCard title={pg.todo} value={stats.todo} hint="Ready to start" />
+              <StatCard title={pg.inProgress} value={stats.inProgress} hint="Active work" tone="info" />
+              <StatCard title={pg.blockedLabel} value={stats.blocked} hint="Needs help" tone="warning" />
+              <StatCard title={t.pages.common.completed} value={stats.done} hint="Finished items" tone="success" />
             </div>
 
             <div className="grid gap-6 xl:grid-cols-2">
-              {renderGroup("To do", grouped.todo, "var(--info)")}
-              {renderGroup("In progress", grouped.in_progress, "var(--accent-2)")}
-              {renderGroup("Blocked", grouped.blocked, "var(--danger)")}
-              {renderGroup("Done", grouped.done, "var(--success)")}
+              {renderGroup(pg.todo, grouped.todo, "var(--info)")}
+              {renderGroup(pg.inProgress, grouped.in_progress, "var(--accent-2)")}
+              {renderGroup(pg.blockedLabel, grouped.blocked, "var(--danger)")}
+              {renderGroup(pg.done, grouped.done, "var(--success)")}
             </div>
           </>
         )}

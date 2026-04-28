@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { AppPageHeader, AppShell } from "@/components/app/AppShell";
 import SectionCard from "@/components/ui/SectionCard";
 import StatusBadge from "@/components/ui/StatusBadge";
@@ -160,6 +161,8 @@ function subtlePillClass() {
 }
 
 function AppearanceCard() {
+  const { t } = useLanguage();
+  const pg = t.pages.settings;
   const [mounted, setMounted] = useState(false);
   const [theme, setTheme] = useState<ThemeMode>(() => readTheme());
 
@@ -187,21 +190,21 @@ function AppearanceCard() {
   const nightActive = mounted && theme === "night";
   const currentThemeLabel = mounted
     ? theme === "night"
-      ? "Night mode"
-      : "Daylight mode"
-    : "Loading…";
+      ? pg.nightModeLabel
+      : pg.daylightModeLabel
+    : t.pages.common.loading;
 
   return (
     <SectionCard
-      title="Theme"
-      subtitle="Switch between daylight and night mode"
+      title={pg.theme}
+      subtitle={pg.themeSubtitle}
       className="bg-[var(--background-panel)]"
     >
       <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
         <div className={cardClass()}>
-          <div className="text-sm font-semibold text-[var(--foreground)]">Theme mode</div>
+          <div className="text-sm font-semibold text-[var(--foreground)]">{pg.themeMode}</div>
           <div className="mt-2 text-sm leading-7 text-[var(--foreground-muted)]">
-            Daylight is easier on the eyes in bright rooms. Night reduces glare and helps you focus.
+            {pg.themeHint}
           </div>
 
           <div className="mt-5 flex flex-wrap gap-3">
@@ -216,7 +219,7 @@ function AppearanceCard() {
                   : "border-[var(--border)] bg-[var(--button-secondary-bg)] text-[var(--foreground)] hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]",
               ].join(" ")}
             >
-              Daylight
+              {pg.daylight}
             </button>
 
             <button
@@ -230,18 +233,18 @@ function AppearanceCard() {
                   : "border-[var(--border)] bg-[var(--button-secondary-bg)] text-[var(--foreground)] hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]",
               ].join(" ")}
             >
-              Night
+              {pg.night}
             </button>
           </div>
         </div>
 
         <div className={cardClass()}>
-          <div className="text-sm font-semibold text-[var(--foreground)]">Current theme</div>
+          <div className="text-sm font-semibold text-[var(--foreground)]">{pg.currentTheme}</div>
           <div className="mt-4 flex items-center gap-3">
             <StatusBadge tone="info">{currentThemeLabel}</StatusBadge>
           </div>
           <div className="mt-4 text-sm leading-7 text-[var(--foreground-muted)]">
-            You can change your theme here anytime. The choice applies across your whole workspace.
+            {pg.themeHelpText}
           </div>
         </div>
       </div>
@@ -250,17 +253,19 @@ function AppearanceCard() {
 }
 
 function WorkspaceSetupCard({ slug }: { slug: string }) {
+  const { t } = useLanguage();
+  const pg = t.pages.settings;
   return (
     <SectionCard
-      title="Workspace setup"
-      subtitle="Update your company profile and strategy"
+      title={pg.workspaceSetup}
+      subtitle={pg.workspaceSetupSubtitle}
       className="bg-[var(--background-panel)]"
     >
       <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
         <div className={cardClass()}>
-          <div className="text-base font-bold text-[var(--foreground)]">Performance cycles</div>
+          <div className="text-base font-bold text-[var(--foreground)]">{pg.performanceCycles}</div>
           <div className="mt-2 text-sm leading-7 text-[var(--foreground-muted)]">
-            View, create, or edit performance cycles. Each cycle represents a quarter or custom period for tracking objectives, OKRs, and KPIs.
+            {pg.performanceCyclesDesc}
           </div>
 
           <div className="mt-5">
@@ -268,25 +273,25 @@ function WorkspaceSetupCard({ slug }: { slug: string }) {
               href={`/o/${encodeURIComponent(slug)}/cycles`}
               className="inline-flex h-11 items-center justify-center rounded-full bg-[var(--foreground)] px-5 text-sm font-semibold text-[var(--background)] transition hover:opacity-90"
             >
-              Manage performance cycles
+              {pg.manageCycles}
             </Link>
           </div>
         </div>
 
         <div className={cardClass()}>
-          <div className="text-sm font-semibold text-[var(--foreground)]">Recent changes</div>
+          <div className="text-sm font-semibold text-[var(--foreground)]">{pg.recentChanges}</div>
           <div className="mt-4 grid gap-3">
             <MiniSettingItem
-              title="Theme is in Settings"
-              desc="Appearance controls now live here."
+              title={pg.changeNotice1Title}
+              desc={pg.changeNotice1Desc}
             />
             <MiniSettingItem
-              title="Onboarding is in Settings"
-              desc="Revisit your setup from this page."
+              title={pg.changeNotice2Title}
+              desc={pg.changeNotice2Desc}
             />
             <MiniSettingItem
-              title="Trends view removed"
-              desc="The Trends view was retired. KPI history is on each KPI page."
+              title={pg.changeNotice3Title}
+              desc={pg.changeNotice3Desc}
             />
           </div>
         </div>
@@ -305,6 +310,8 @@ function MiniSettingItem({ title, desc }: { title: string; desc: string }) {
 }
 
 function StrategyCard({ slug }: { slug: string }) {
+  const { t } = useLanguage();
+  const pg = t.pages.settings;
   const [strategy, setStrategy] = useState("");
   const [originalStrategy, setOriginalStrategy] = useState("");
   const [loading, setLoading] = useState(true);
@@ -386,8 +393,8 @@ function StrategyCard({ slug }: { slug: string }) {
 
   return (
     <SectionCard
-      title="Company strategy"
-      subtitle="The strategic direction that shapes AI-generated content"
+      title={pg.companyStrategy}
+      subtitle={pg.companyStrategySubtitle}
       className="bg-[var(--background-panel)]"
     >
       {loading ? (
@@ -395,7 +402,7 @@ function StrategyCard({ slug }: { slug: string }) {
       ) : (
         <>
           <div className="text-sm leading-7 text-[var(--foreground-muted)]">
-            This strategy is used as context when AI generates objectives, OKRs, KPIs, and reports. You can update it anytime without going through onboarding.
+            {pg.strategyHint}
           </div>
 
           <textarea
@@ -428,7 +435,7 @@ function StrategyCard({ slug }: { slug: string }) {
               disabled={saving || !isDirty}
               className="inline-flex h-11 items-center justify-center rounded-full bg-[var(--foreground)] px-5 text-sm font-semibold text-[var(--background)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {saving ? "Saving…" : "Save strategy"}
+              {saving ? t.pages.common.saving : pg.saveStrategy}
             </button>
           </div>
         </>
@@ -441,6 +448,8 @@ export default function SettingsPage() {
   const params = useParams<{ slug: string }>();
   const router = useRouter();
   const orgSlug = String(params?.slug ?? "").trim();
+  const { t } = useLanguage();
+  const pg = t.pages.settings;
 
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -817,9 +826,9 @@ export default function SettingsPage() {
   return (
     <AppShell slug={orgSlug} sessionEmail={sessionEmail}>
       <AppPageHeader
-        eyebrow="Workspace settings"
-        title="Settings"
-        description="Manage your workspace, invite teammates, and adjust preferences."
+        eyebrow={pg.eyebrow}
+        title={pg.title}
+        description={pg.description}
         actions={
           <div className="flex items-center gap-3">
             <button
@@ -827,7 +836,7 @@ export default function SettingsPage() {
               onClick={() => void load()}
               className={actionGhostClass()}
             >
-              Reload
+              {t.pages.common.refresh}
             </button>
           </div>
         }
@@ -846,7 +855,7 @@ export default function SettingsPage() {
       ) : null}
 
       <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        <SectionCard title="Workspace identity" subtitle="Your workspace name and basic info">
+        <SectionCard title={pg.workspaceIdentity} subtitle={pg.workspaceIdentitySubtitle}>
           {loading ? (
             <div className="space-y-4">
               <div className="h-24 animate-pulse rounded-[20px] border border-[var(--border)] bg-[var(--card)]" />
@@ -856,7 +865,7 @@ export default function SettingsPage() {
             <div className="space-y-5">
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-[var(--foreground-soft)]">Workspace name</label>
+                  <label className="mb-2 block text-sm font-medium text-[var(--foreground-soft)]">{pg.workspaceNameLabel}</label>
                   <input
                     value={orgName}
                     onChange={(e) => setOrgName(e.target.value)}
@@ -867,7 +876,7 @@ export default function SettingsPage() {
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-[var(--foreground-soft)]">Workspace URL</label>
+                  <label className="mb-2 block text-sm font-medium text-[var(--foreground-soft)]">{pg.workspaceURL}</label>
                   <input
                     value={org?.slug ?? ""}
                     disabled
@@ -883,23 +892,23 @@ export default function SettingsPage() {
                   disabled={!member?.permissions?.canManageOrg || savingOrg || !orgName.trim()}
                   className={actionPrimaryClass()}
                 >
-                  {savingOrg ? "Saving..." : "Save changes"}
+                  {savingOrg ? t.pages.common.saving : t.pages.common.save}
                 </button>
               </div>
 
               <div className="grid gap-3 md:grid-cols-3">
                 <div className={softCardClass()}>
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-faint)]">Departments</div>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-faint)]">{t.pages.departments.title}</div>
                   <div className="mt-2 text-2xl font-black text-[var(--foreground)]">{workspace?.departments ?? 0}</div>
                 </div>
 
                 <div className={softCardClass()}>
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-faint)]">KPIs</div>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-faint)]">{t.appShell.nav.kpis}</div>
                   <div className="mt-2 text-2xl font-black text-[var(--foreground)]">{workspace?.kpis ?? 0}</div>
                 </div>
 
                 <div className={softCardClass()}>
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-faint)]">Objectives</div>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-faint)]">{t.pages.dashboard.objectives}</div>
                   <div className="mt-2 text-2xl font-black text-[var(--foreground)]">{workspace?.objectives ?? 0}</div>
                 </div>
               </div>
@@ -907,7 +916,7 @@ export default function SettingsPage() {
           )}
         </SectionCard>
 
-        <SectionCard title="Your account" subtitle="Your sign-in and role in this workspace">
+        <SectionCard title={pg.yourAccount} subtitle={pg.yourAccountSubtitle}>
           {loading ? (
             <div className="h-52 animate-pulse rounded-[20px] border border-[var(--border)] bg-[var(--card)]" />
           ) : (
@@ -918,26 +927,30 @@ export default function SettingsPage() {
                 </div>
                 <div className="min-w-0">
                   <div className="truncate text-base font-bold text-[var(--foreground)]">{sessionEmail ?? "Signed-in user"}</div>
-                  <div className="mt-1 text-sm text-[var(--foreground-muted)]">Signed in</div>
+                  <div className="mt-1 text-sm text-[var(--foreground-muted)]">{pg.signedIn}</div>
                 </div>
               </div>
 
               <div className="space-y-3">
                 <div className={softCardClass()}>
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-faint)]">Email</div>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-faint)]">{pg.emailLabel}</div>
                   <div className="mt-2 text-sm font-medium text-[var(--foreground)]">{member?.email ?? sessionEmail ?? "—"}</div>
                 </div>
 
                 <div className={softCardClass()}>
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-faint)]">Role</div>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-faint)]">{pg.roleLabel}</div>
                   <div className="mt-2 flex items-center gap-2">
                     <StatusBadge tone={roleTone(member?.role)}>{prettyRole(member?.role)}</StatusBadge>
                   </div>
                 </div>
 
                 <div className={softCardClass()}>
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-faint)]">Active cycle</div>
-                  <div className="mt-2 text-sm font-medium text-[var(--foreground)]">{cycleLabel(workspace?.activeCycle)}</div>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-faint)]">{pg.activeCycle}</div>
+                  <div className="mt-2 text-sm font-medium text-[var(--foreground)]">
+                    {workspace?.activeCycle
+                      ? `Q${workspace.activeCycle.quarter} ${workspace.activeCycle.year} · ${workspace.activeCycle.status}`
+                      : t.pages.common.noActiveCycle}
+                  </div>
                 </div>
               </div>
             </div>
@@ -952,7 +965,7 @@ export default function SettingsPage() {
       </div>
 
       <div className="mt-6">
-        <SectionCard title="Team members" subtitle="Invite teammates, assign roles, and manage departments. Owner-only actions.">
+        <SectionCard title={pg.teamMembers} subtitle={pg.teamMembersSubtitle}>
           {loading ? (
             <div className="space-y-4">
               <div className="h-28 animate-pulse rounded-[20px] border border-[var(--border)] bg-[var(--card)]" />
@@ -961,14 +974,14 @@ export default function SettingsPage() {
           ) : (
             <div className="space-y-5">
               <div className={cardClass()}>
-                <div className="text-base font-bold text-[var(--foreground)]">Invite a teammate</div>
+                <div className="text-base font-bold text-[var(--foreground)]">{pg.inviteTeammate}</div>
                 <div className="mt-1 text-sm text-[var(--foreground-muted)]">
-                  Pick a role. Department Heads and Employees must be assigned to a department up front.
+                  {pg.inviteHint}
                 </div>
 
                 <div className="mt-4 grid gap-4 md:grid-cols-2">
                   <div>
-                    <label className="mb-2 block text-sm font-medium text-[var(--foreground-soft)]">Work email</label>
+                    <label className="mb-2 block text-sm font-medium text-[var(--foreground-soft)]">{pg.workEmailLabel}</label>
                     <input
                       value={inviteEmail}
                       onChange={(e) => setInviteEmail(e.target.value)}
@@ -979,7 +992,7 @@ export default function SettingsPage() {
                   </div>
 
                   <div>
-                    <label className="mb-2 block text-sm font-medium text-[var(--foreground-soft)]">Role</label>
+                    <label className="mb-2 block text-sm font-medium text-[var(--foreground-soft)]">{pg.roleLabel}</label>
                     <select
                       value={inviteRole}
                       onChange={(e) => setInviteRole(e.target.value as Exclude<Role, "owner">)}
@@ -997,7 +1010,7 @@ export default function SettingsPage() {
 
                 {roleSupportsDepartment(inviteRole) ? (
                   <div className="mt-4">
-                    <label className="mb-2 block text-sm font-medium text-[var(--foreground-soft)]">Department</label>
+                    <label className="mb-2 block text-sm font-medium text-[var(--foreground-soft)]">{t.pages.common.department}</label>
                     <select
                       value={inviteDepartmentId}
                       onChange={(e) => setInviteDepartmentId(e.target.value)}
@@ -1023,15 +1036,15 @@ export default function SettingsPage() {
                     disabled={!member?.permissions?.canInviteMembers || inviting || !inviteEmail.trim()}
                     className={actionPrimaryClass()}
                   >
-                    {inviting ? "Sending..." : "Send invite"}
+                    {inviting ? pg.sending : pg.sendInvite}
                   </button>
                 </div>
               </div>
 
               <div className={cardClass()}>
-                <div className="text-base font-bold text-[var(--foreground)]">Current members</div>
+                <div className="text-base font-bold text-[var(--foreground)]">{pg.currentMembers}</div>
                 <div className="mt-1 text-sm text-[var(--foreground-muted)]">
-                  When you change someone to Department Head or Employee, assign their department next.
+                  {pg.deptWarning}
                 </div>
 
                 {members.length ? (
@@ -1060,7 +1073,7 @@ export default function SettingsPage() {
 
                                   {supportsDepartment ? (
                                     <span className={subtlePillClass()}>
-                                      {item.departmentName ?? "No department yet"}
+                                      {item.departmentName ?? t.pages.common.unassigned}
                                     </span>
                                   ) : null}
 
@@ -1080,7 +1093,7 @@ export default function SettingsPage() {
                                     disabled={!member?.permissions?.canInviteMembers}
                                     className={actionGhostClass()}
                                   >
-                                    Change role
+                                    {pg.changeRole}
                                   </button>
                                 )}
 
@@ -1091,7 +1104,7 @@ export default function SettingsPage() {
                                     disabled={!member?.permissions?.canInviteMembers}
                                     className={actionGhostClass()}
                                   >
-                                    Assign department
+                                    {pg.assignDept}
                                   </button>
                                 ) : null}
 
@@ -1106,7 +1119,7 @@ export default function SettingsPage() {
                                   }
                                   className={actionDangerClass()}
                                 >
-                                  {removingMemberId === item.userId ? "Removing..." : "Remove"}
+                                  {removingMemberId === item.userId ? pg.removing : pg.remove}
                                 </button>
                               </div>
                             </div>
@@ -1133,7 +1146,7 @@ export default function SettingsPage() {
                                     disabled={updatingMemberId === item.userId}
                                     className={actionPrimaryClass()}
                                   >
-                                    {updatingMemberId === item.userId ? "Saving..." : "Save role"}
+                                    {updatingMemberId === item.userId ? t.pages.common.saving : pg.saveRole}
                                   </button>
 
                                   <button
@@ -1142,7 +1155,7 @@ export default function SettingsPage() {
                                     disabled={updatingMemberId === item.userId}
                                     className={actionGhostClass()}
                                   >
-                                    Cancel
+                                    {t.pages.common.cancel}
                                   </button>
                                 </div>
                               </div>
@@ -1173,7 +1186,7 @@ export default function SettingsPage() {
                                     disabled={updatingMemberId === item.userId}
                                     className={actionPrimaryClass()}
                                   >
-                                    {updatingMemberId === item.userId ? "Saving..." : "Save department"}
+                                    {updatingMemberId === item.userId ? t.pages.common.saving : pg.saveDept}
                                   </button>
 
                                   <button
@@ -1182,7 +1195,7 @@ export default function SettingsPage() {
                                     disabled={updatingMemberId === item.userId}
                                     className={actionGhostClass()}
                                   >
-                                    Cancel
+                                    {t.pages.common.cancel}
                                   </button>
                                 </div>
                               </div>
@@ -1194,7 +1207,7 @@ export default function SettingsPage() {
                   </div>
                 ) : (
                   <div className="mt-4 rounded-2xl border border-[var(--border)] bg-[var(--card-subtle)] px-4 py-8 text-center text-sm text-[var(--foreground-muted)]">
-                    No members yet. Invite your first teammate above.
+                    {pg.noMembers}
                   </div>
                 )}
               </div>

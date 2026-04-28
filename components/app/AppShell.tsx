@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useMemo } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
+import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
 
 type AppShellProps = {
   slug: string;
@@ -23,6 +25,11 @@ type NavItem = {
   label: string;
   href: string;
   icon: React.ReactNode;
+};
+
+type NavGroup = {
+  label: string;
+  items: NavItem[];
 };
 
 function cn(...classes: Array<string | false | null | undefined>) {
@@ -70,21 +77,39 @@ export function AppShell({
 }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const { t } = useLanguage();
+  const as = t.appShell;
 
-  const navItems = useMemo<NavItem[]>(
+  const navGroups = useMemo<NavGroup[]>(
     () => [
-      { label: "Dashboard", href: `/o/${slug}/dashboard`, icon: <DashboardIcon /> },
-      { label: "Your AI", href: `/o/${slug}/your-ai`, icon: <AiIcon /> },
-      { label: "Objectives", href: `/o/${slug}/objectives`, icon: <TargetIcon /> },
-      { label: "OKRs", href: `/o/${slug}/okrs`, icon: <LayersIcon /> },
-      { label: "KPIs", href: `/o/${slug}/kpis`, icon: <ChartIcon /> },
-      { label: "Tasks", href: `/o/${slug}/tasks`, icon: <TaskIcon /> },
-      { label: "Reports", href: `/o/${slug}/reports`, icon: <ReportIcon /> },
-      { label: "My Work", href: `/o/${slug}/my-work`, icon: <UserWorkIcon /> },
-      { label: "Departments", href: `/o/${slug}/departments`, icon: <DepartmentIcon /> },
-      { label: "Settings", href: `/o/${slug}/settings`, icon: <SettingsIcon /> },
+      {
+        label: as.nav.groupPerformance,
+        items: [
+          { label: as.nav.dashboard, href: `/o/${slug}/dashboard`, icon: <DashboardIcon /> },
+          { label: as.nav.kpis, href: `/o/${slug}/kpis`, icon: <ChartIcon /> },
+          { label: as.nav.objectives, href: `/o/${slug}/objectives`, icon: <TargetIcon /> },
+          { label: as.nav.okrs, href: `/o/${slug}/okrs`, icon: <LayersIcon /> },
+        ],
+      },
+      {
+        label: as.nav.groupExecution,
+        items: [
+          { label: as.nav.tasks, href: `/o/${slug}/tasks`, icon: <TaskIcon /> },
+          { label: as.nav.myWork, href: `/o/${slug}/my-work`, icon: <UserWorkIcon /> },
+          { label: as.nav.reports, href: `/o/${slug}/reports`, icon: <ReportIcon /> },
+          { label: as.nav.yourAI, href: `/o/${slug}/your-ai`, icon: <AiIcon /> },
+        ],
+      },
+      {
+        label: as.nav.groupOrganization,
+        items: [
+          { label: as.nav.departments, href: `/o/${slug}/departments`, icon: <DepartmentIcon /> },
+          { label: as.nav.settings, href: `/o/${slug}/settings`, icon: <SettingsIcon /> },
+        ],
+      },
     ],
-    [slug]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [slug, as]
   );
 
   const handleSignOut = async () => {
@@ -115,7 +140,7 @@ export function AppShell({
 
           <div className="rounded-[26px] border border-[var(--border)] bg-[var(--card)] p-4 alamin-shadow">
             <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
-              Organization
+              {as.orgLabel}
             </div>
             <div className="mt-3 text-2xl font-bold text-[var(--foreground)]">{slug}</div>
             <div className="mt-2 truncate text-sm text-[var(--foreground-muted)]">
@@ -123,39 +148,39 @@ export function AppShell({
             </div>
           </div>
 
-          <div className="mt-6 px-2">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
-              Workspace
-            </div>
-          </div>
-
-          <nav className="mt-4 space-y-2">
-            {navItems.map((item) => {
-              const active = pathname === item.href;
-
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    "group flex items-center justify-between rounded-[18px] border px-4 py-3 transition",
-                    active
-                      ? "border-[var(--border-active)] text-[var(--nav-item-active-text)]"
-                      : "border-transparent text-[var(--nav-item)] hover:border-[var(--border)]"
-                  )}
-                  style={{
-                    background: active ? "var(--nav-item-active-bg)" : "transparent",
-                  }}
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)]">
-                      {item.icon}
-                    </span>
-                    <span className="text-[15px] font-medium">{item.label}</span>
-                  </div>
-                </Link>
-              );
-            })}
+          <nav className="mt-6 space-y-5 overflow-y-auto">
+            {navGroups.map((group) => (
+              <div key={group.label}>
+                <div className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--foreground-faint)]">
+                  {group.label}
+                </div>
+                <div className="space-y-1">
+                  {group.items.map((item) => {
+                    const active = pathname === item.href;
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        className={cn(
+                          "group flex items-center gap-3 rounded-[16px] border px-3 py-2.5 transition",
+                          active
+                            ? "border-[var(--border-active)] text-[var(--nav-item-active-text)]"
+                            : "border-transparent text-[var(--nav-item)] hover:border-[var(--border)] hover:bg-[var(--nav-item-hover-bg)]"
+                        )}
+                        style={{
+                          background: active ? "var(--nav-item-active-bg)" : undefined,
+                        }}
+                      >
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--button-secondary-bg)]">
+                          {item.icon}
+                        </span>
+                        <span className="text-[14px] font-medium">{item.label}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </nav>
 
           <div className="mt-auto pt-6">
@@ -171,7 +196,7 @@ export function AppShell({
                 <div className="truncate text-sm font-semibold text-[var(--foreground)]">
                   {sessionEmail ?? "Account"}
                 </div>
-                <div className="text-xs text-[var(--foreground-faint)]">Sign out</div>
+                <div className="text-xs text-[var(--foreground-faint)]">{as.signOut}</div>
               </div>
             </button>
           </div>
@@ -182,14 +207,17 @@ export function AppShell({
             <div className="mb-7 flex flex-col gap-4 rounded-[26px] border border-[var(--border)] bg-[var(--background-panel)] px-5 py-5 xl:flex-row xl:items-center xl:justify-between">
               <div>
                 <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
-                  Performance workspace
+                  {as.performanceWorkspace}
                 </div>
                 <div className="mt-2 text-[15px] text-[var(--foreground-muted)]">
                   /o/{slug}
                 </div>
               </div>
 
-              <div className="flex items-center gap-3">{topActions}</div>
+              <div className="flex items-center gap-3">
+                <LanguageSwitcher />
+                {topActions}
+              </div>
             </div>
 
             {children}

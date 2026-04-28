@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
+import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
 
 function normalizeSlug(input: string): string {
   return input
@@ -29,6 +31,8 @@ function getErrorMessage(err: unknown, fallback: string): string {
 
 export default function CreateWorkspacePage() {
   const router = useRouter();
+  const { t } = useLanguage();
+  const cw = t.createWorkspace;
 
   const [booting, setBooting] = useState(true);
   const [sessionReady, setSessionReady] = useState(false);
@@ -129,11 +133,10 @@ export default function CreateWorkspacePage() {
               <div className="text-sm font-semibold tracking-[0.22em] text-[var(--foreground-soft)]">
                 ALAMIN
               </div>
-              <div className="text-sm text-[var(--foreground-muted)]">
-                AI Performance Intelligence
-              </div>
+              <div className="text-sm text-[var(--foreground-muted)]">{t.brand.tagline}</div>
             </div>
           </Link>
+          <LanguageSwitcher />
         </div>
       </header>
 
@@ -143,7 +146,7 @@ export default function CreateWorkspacePage() {
             <div className="rounded-[32px] border border-[var(--border-strong)] bg-[var(--background-panel)] p-10 alamin-glow">
               <div className="flex items-center justify-center gap-3 text-sm text-[var(--foreground-muted)]">
                 <div className="h-5 w-5 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--foreground)]" />
-                Checking your session…
+                {cw.checking}
               </div>
             </div>
           ) : (
@@ -152,35 +155,35 @@ export default function CreateWorkspacePage() {
               <div className="relative rounded-[32px] border border-[var(--border-strong)] bg-[var(--background-panel)] p-8 alamin-glow md:p-10">
                 <div className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--foreground-faint)]">
                   <span className="h-2 w-2 rounded-full bg-[var(--accent-2)]" />
-                  New workspace
+                  {cw.badge}
                 </div>
 
                 <h1 className="mt-5 text-3xl font-black tracking-[-0.03em] text-[var(--foreground)] md:text-4xl">
-                  Name your workspace
+                  {cw.heading}
                 </h1>
 
                 <p className="mt-4 text-base leading-7 text-[var(--foreground-muted)]">
                   {userEmail ? (
                     <>
-                      You&apos;ll be the owner of this workspace, signed in as{" "}
+                      {cw.ownerNote}{" "}
                       <span className="font-semibold text-[var(--foreground)]">{userEmail}</span>
-                      . You can invite team members in the next step.
+                      {cw.ownerNoteSuffix}
                     </>
                   ) : (
-                    "You'll be the owner of this workspace. You can invite team members in the next step."
+                    cw.ownerNoteNoEmail
                   )}
                 </p>
 
                 <form onSubmit={handleSubmit} className="mt-8 grid gap-4">
                   <div className="grid gap-2">
                     <label className="text-sm font-medium text-[var(--foreground-soft)]">
-                      Workspace name
+                      {cw.nameLabel}
                     </label>
                     <input
                       type="text"
                       value={name}
                       onChange={(e) => setName(e.target.value)}
-                      placeholder="Acme Inc."
+                      placeholder={cw.namePlaceholder}
                       autoFocus
                       disabled={saving}
                       className="h-12 w-full rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 text-[var(--foreground)] outline-none placeholder:text-[var(--foreground-faint)] transition focus:border-[var(--border-strong)]"
@@ -190,7 +193,7 @@ export default function CreateWorkspacePage() {
                   {previewSlug && (
                     <div className="rounded-[18px] border border-[var(--border)] bg-[var(--card-subtle)] px-4 py-3">
                       <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--foreground-faint)]">
-                        Workspace URL preview
+                        {cw.urlPreviewLabel}
                       </div>
                       <div className="mt-1 font-mono text-sm text-[var(--foreground-soft)]">
                         /o/{previewSlug}
@@ -210,7 +213,7 @@ export default function CreateWorkspacePage() {
                       disabled={!canSubmit}
                       className="inline-flex h-12 flex-1 items-center justify-center rounded-full bg-[var(--foreground)] px-5 text-sm font-semibold text-[var(--background)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      {saving ? "Creating workspace…" : "Create workspace"}
+                      {saving ? cw.submitting : cw.submit}
                     </button>
                     <button
                       type="button"
@@ -218,28 +221,22 @@ export default function CreateWorkspacePage() {
                       disabled={saving}
                       className="inline-flex h-12 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-5 text-sm font-medium text-[var(--foreground)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)] disabled:opacity-60"
                     >
-                      Back
+                      {cw.back}
                     </button>
                   </div>
                 </form>
 
                 <div className="mt-8 rounded-[22px] border border-[var(--border)] bg-[var(--card-subtle)] p-4">
                   <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
-                    What happens next
+                    {cw.whatNext.eyebrow}
                   </div>
                   <ul className="mt-3 grid gap-2 text-sm leading-6 text-[var(--foreground-muted)]">
-                    <li className="flex items-start gap-2">
-                      <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--accent-2)]" />
-                      We&apos;ll create your workspace and make you the owner.
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--accent-2)]" />
-                      You&apos;ll land in onboarding to set up company info and departments.
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--accent-2)]" />
-                      After that, ALAMIN generates your KPIs and OKRs from your strategy.
-                    </li>
+                    {cw.whatNext.items.map((item) => (
+                      <li key={item} className="flex items-start gap-2">
+                        <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--accent-2)]" />
+                        {item}
+                      </li>
+                    ))}
                   </ul>
                 </div>
               </div>

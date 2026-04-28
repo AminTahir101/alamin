@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { AppPageHeader, AppShell } from "@/components/app/AppShell";
 import EmptyState from "@/components/ui/EmptyState";
 import ProgressBar from "@/components/ui/ProgressBar";
@@ -122,6 +123,8 @@ export default function DepartmentsPage() {
   const params = useParams<{ slug: string }>();
   const router = useRouter();
   const orgSlug = String(params?.slug ?? "").trim();
+  const { t } = useLanguage();
+  const pg = t.pages.departments;
 
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
 
@@ -345,7 +348,7 @@ export default function DepartmentsPage() {
       topActions={
         <div className="flex items-center gap-3">
           <button type="button" onClick={() => void load()} className={buttonClass("secondary")}>
-            Refresh
+            {t.pages.common.refresh}
           </button>
           {canManage ? (
             <button
@@ -356,7 +359,7 @@ export default function DepartmentsPage() {
               }}
               className={buttonClass("primary")}
             >
-              New department
+              {pg.newDepartment}
             </button>
           ) : null}
         </div>
@@ -364,8 +367,8 @@ export default function DepartmentsPage() {
     >
       <AppPageHeader
         eyebrow={cycleText}
-        title="Departments"
-        description="Manage the organization structure and track department-level performance, KPI concentration, and execution risk across the active cycle."
+        title={pg.title}
+        description={pg.description}
       />
 
       {(msg || okMsg) && (
@@ -388,39 +391,38 @@ export default function DepartmentsPage() {
           <div>
             <div className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--foreground-faint)]">
               <span className="h-2 w-2 rounded-full bg-[var(--accent-2)]" />
-              Department performance layer
+              {pg.deptPerfBadge}
             </div>
 
             <h2 className="mt-5 text-3xl font-black tracking-[-0.04em] text-[var(--foreground)]">
-              See which departments are healthy, slipping, or overloaded.
+              {pg.heroH2}
             </h2>
 
             <p className="mt-4 max-w-3xl text-base leading-7 text-[var(--foreground-muted)]">
-              This page combines department setup with live scorecards so leadership can manage the
-              structure and immediately see where KPI risk is concentrated.
+              {pg.heroBody}
             </p>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
             <StatCard
-              title="Departments"
+              title={pg.total}
               value={stats.total}
-              hint="Registered in the organization"
+              hint={pg.totalLabel}
             />
             <StatCard
-              title="Average score"
+              title={pg.avgScore}
               value={stats.total === 0 ? "—" : `${numberFmt(stats.avgScore)}%`}
-              hint="Across all departments"
+              hint={pg.avgScoreLabel}
               tone={stats.total === 0 ? "default" : cardTone(stats.avgScore)}
             />
             <StatCard
-              title="Healthy"
+              title={pg.healthy}
               value={stats.healthy}
-              hint="Departments on track"
+              hint={pg.healthyLabel}
               tone="success"
             />
             <StatCard
-              title="Needs attention"
+              title={pg.needsAttention}
               value={stats.atRisk + stats.critical}
               hint={`${stats.atRisk} at risk · ${stats.critical} critical`}
               tone={stats.critical > 0 ? "danger" : "warning"}
@@ -431,12 +433,8 @@ export default function DepartmentsPage() {
 
       <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
         <SectionCard
-          title="Department management"
-          subtitle={
-            canManage
-              ? "Create and delete departments for this organization."
-              : "You can view departments, but only organization admins can manage them."
-          }
+          title={pg.management}
+          subtitle={canManage ? pg.managementSubtitle : pg.adminNote}
           className="bg-[var(--background-panel)]"
         >
           {loading ? (
@@ -448,21 +446,21 @@ export default function DepartmentsPage() {
           ) : (
             <div className="space-y-5">
               <div className="rounded-[22px] border border-[var(--border)] bg-[var(--card)] p-5">
-                <div className="text-base font-bold text-[var(--foreground)]">Create department</div>
+                <div className="text-base font-bold text-[var(--foreground)]">{pg.createDept}</div>
                 <div className="mt-1 text-sm text-[var(--foreground-muted)]">
-                  Add a department that can later own KPIs, objectives, OKRs, and tasks.
+                  {pg.createDeptSubtitle}
                 </div>
 
                 <div className="mt-5 grid gap-3">
                   <label className="grid gap-2">
                     <span className="text-sm font-medium text-[var(--foreground-soft)]">
-                      Department name
+                      {pg.deptNameLabel}
                     </span>
                     <input
                       id="department-create-input"
                       value={newDepartmentName}
                       onChange={(e) => setNewDepartmentName(e.target.value)}
-                      placeholder="e.g. Finance"
+                      placeholder={pg.deptNamePlaceholder}
                       disabled={!canManage || savingDepartment}
                       className="h-12 w-full rounded-2xl border border-[var(--border)] bg-[var(--background-elevated)] px-4 text-[var(--foreground)] outline-none placeholder:text-[var(--foreground-faint)] transition focus:border-[var(--border-strong)]"
                     />
@@ -475,12 +473,12 @@ export default function DepartmentsPage() {
                       disabled={!canManage || savingDepartment || !newDepartmentName.trim()}
                       className={buttonClass("primary")}
                     >
-                      {savingDepartment ? "Creating..." : "Create department"}
+                      {savingDepartment ? pg.creating : pg.createDept}
                     </button>
 
                     {!canManage ? (
                       <span className="text-xs text-[var(--foreground-faint)]">
-                        Admin access required
+                        {pg.adminRequired}
                       </span>
                     ) : null}
                   </div>
@@ -488,9 +486,9 @@ export default function DepartmentsPage() {
               </div>
 
               <div className="rounded-[22px] border border-[var(--border)] bg-[var(--card)] p-5">
-                <div className="text-base font-bold text-[var(--foreground)]">Current departments</div>
+                <div className="text-base font-bold text-[var(--foreground)]">{pg.currentDepts}</div>
                 <div className="mt-1 text-sm text-[var(--foreground-muted)]">
-                  Delete only departments that are no longer connected to active data.
+                  {pg.currentDeptsSubtitle}
                 </div>
 
                 {registry.length ? (
@@ -512,14 +510,14 @@ export default function DepartmentsPage() {
                           disabled={!canManage || deletingDepartmentId === item.id}
                           className={buttonClass("danger")}
                         >
-                          {deletingDepartmentId === item.id ? "Deleting..." : "Delete"}
+                          {deletingDepartmentId === item.id ? t.pages.common.deleting : t.pages.common.delete}
                         </button>
                       </div>
                     ))}
                   </div>
                 ) : (
                   <div className="mt-5 rounded-[18px] border border-[var(--border)] bg-[var(--card-subtle)] px-4 py-8 text-center text-sm text-[var(--foreground-faint)]">
-                    No departments created yet.
+                    {pg.noDepts}
                   </div>
                 )}
               </div>
@@ -528,8 +526,8 @@ export default function DepartmentsPage() {
         </SectionCard>
 
         <SectionCard
-          title="Department scorecards"
-          subtitle="Ranked by current performance and KPI distribution"
+          title={pg.scorecards}
+          subtitle={pg.scorecardsSubtitle}
           className="bg-[var(--background-panel)]"
         >
           {loading ? (
@@ -560,7 +558,7 @@ export default function DepartmentsPage() {
                       <div className="text-3xl font-black text-[var(--foreground)]">
                         {d.score === -1 ? "—" : `${numberFmt(d.score)}%`}
                       </div>
-                      <div className="text-xs text-[var(--foreground-faint)]">Score</div>
+                      <div className="text-xs text-[var(--foreground-faint)]">{t.pages.common.score}</div>
                     </div>
                   </div>
 
@@ -569,18 +567,18 @@ export default function DepartmentsPage() {
                   </div>
 
                   <div className="mt-5 grid grid-cols-2 gap-3">
-                    <MetricTile label="Total KPIs" value={numberFmt(d.total_kpis)} />
-                    <MetricTile label="Healthy" value={numberFmt(d.healthy_kpis)} />
-                    <MetricTile label="At Risk" value={numberFmt(d.at_risk_kpis)} />
-                    <MetricTile label="Critical" value={numberFmt(d.critical_kpis)} />
+                    <MetricTile label={pg.totalKPIs} value={numberFmt(d.total_kpis)} />
+                    <MetricTile label={pg.healthy} value={numberFmt(d.healthy_kpis)} />
+                    <MetricTile label={pg.atRisk} value={numberFmt(d.at_risk_kpis)} />
+                    <MetricTile label={pg.critical} value={numberFmt(d.critical_kpis)} />
                   </div>
                 </div>
               ))}
             </div>
           ) : (
             <EmptyState
-              title="No departments available"
-              description="Create departments to populate this view."
+              title={pg.noScorecardsTitle}
+              description={pg.noScorecardsDesc}
             />
           )}
         </SectionCard>

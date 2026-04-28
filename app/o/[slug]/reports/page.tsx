@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { AppPageHeader, AppShell } from "@/components/app/AppShell";
 import SectionCard from "@/components/ui/SectionCard";
 import EmptyState from "@/components/ui/EmptyState";
@@ -137,15 +138,19 @@ function toneForStatus(value?: string | null) {
   return "neutral" as const;
 }
 
-function cadenceLabel(cadence: string) {
-  switch (cadence) {
-    case "bi_weekly":
-      return "Bi-weekly";
-    case "bi_annual":
-      return "Bi-annual";
-    default:
-      return cadence.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-  }
+function cadenceLabelT(
+  cadence: string,
+  pg: {
+    cadenceWeekly: string; cadenceBiWeekly: string; cadenceMonthly: string;
+    cadenceQuarterly: string; cadenceBiAnnual: string; cadenceAnnual: string; cadenceCustom: string;
+  },
+) {
+  const map: Record<string, string> = {
+    weekly: pg.cadenceWeekly, bi_weekly: pg.cadenceBiWeekly, monthly: pg.cadenceMonthly,
+    quarterly: pg.cadenceQuarterly, bi_annual: pg.cadenceBiAnnual, annual: pg.cadenceAnnual,
+    custom: pg.cadenceCustom,
+  };
+  return map[cadence] ?? cadence.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function inputClass() {
@@ -176,6 +181,8 @@ export default function ReportsPage() {
   const params = useParams<{ slug: string }>();
   const router = useRouter();
   const orgSlug = String(params?.slug ?? "").trim();
+  const { t } = useLanguage();
+  const pg = t.pages.reports;
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -305,7 +312,7 @@ export default function ReportsPage() {
         throw new Error(parsed?.error || raw || "Failed to create report");
       }
 
-      setOkMsg("Report created. If auto-generate is enabled, the first run was generated immediately.");
+      setOkMsg(pg.msgCreated);
       setForm((prev) => ({ ...defaultForm, recipients: prev.recipients }));
       await loadReports();
     } catch (err: unknown) {
@@ -334,7 +341,7 @@ export default function ReportsPage() {
       if (!res.ok || !parsed?.ok) {
         throw new Error(parsed?.error || raw || "Failed to generate report");
       }
-      setOkMsg("Report generated.");
+      setOkMsg(pg.msgGenerated);
       await loadReports();
     } catch (err: unknown) {
       setMsg(getErrorMessage(err, "Failed to generate report"));
@@ -362,7 +369,7 @@ export default function ReportsPage() {
       if (!res.ok || !parsed?.ok) {
         throw new Error(parsed?.error || raw || "Failed to delete report");
       }
-      setOkMsg("Report deactivated.");
+      setOkMsg(pg.msgDeactivated);
       await loadReports();
     } catch (err: unknown) {
       setMsg(getErrorMessage(err, "Failed to delete report"));
@@ -399,7 +406,7 @@ export default function ReportsPage() {
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-      setOkMsg(`Report exported as ${format.toUpperCase()}.`);
+      setOkMsg(pg.msgExported.replace("{format}", format.toUpperCase()));
     } catch (err: unknown) {
       setMsg(getErrorMessage(err, "Failed to export report"));
     } finally {
@@ -423,22 +430,22 @@ export default function ReportsPage() {
       topActions={
         <div className="flex flex-wrap items-center gap-3">
           <button type="button" onClick={() => void loadReports()} className={secondaryButtonClass()}>
-            Refresh
+            {t.pages.common.refresh}
           </button>
           <button
             type="button"
             onClick={() => router.push(`/o/${encodeURIComponent(orgSlug)}/dashboard`)}
             className={primaryButtonClass()}
           >
-            Back to dashboard
+            {pg.backToDashboard}
           </button>
         </div>
       }
     >
       <AppPageHeader
-        eyebrow={cycle ? `Q${cycle.quarter} ${cycle.year} · ${cycle.status}` : "No active cycle"}
-        title="Reports"
-        description="Create default or custom reports, export them, auto-generate them, and email them straight from the workspace."
+        eyebrow={cycle ? `Q${cycle.quarter} ${cycle.year} · ${cycle.status}` : t.pages.common.noActiveCycle}
+        title={pg.title}
+        description={pg.description}
       />
 
       {(msg || okMsg) && (
@@ -461,39 +468,38 @@ export default function ReportsPage() {
           <div>
             <div className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--foreground-faint)]">
               <span className="h-2 w-2 rounded-full bg-[var(--accent-2)]" />
-              Reporting engine
+              {pg.reportingEngineBadge}
             </div>
 
             <h2 className="mt-5 text-3xl font-black tracking-[-0.04em] text-[var(--foreground)]">
-              Automate reporting without turning it into spreadsheet theater.
+              {pg.heroTitle}
             </h2>
 
             <p className="mt-4 max-w-3xl text-base leading-7 text-[var(--foreground-muted)]">
-              Create reusable report definitions, choose what goes inside, auto-generate on cadence,
-              export to JSON or CSV, and email leadership directly from the product.
+              {pg.heroBody}
             </p>
 
             <div className="mt-6 flex flex-wrap gap-2">
-              <span className={chipClass()}>Weekly to annual cadence</span>
-              <span className={chipClass()}>Custom report windows</span>
-              <span className={chipClass()}>Export + email delivery</span>
-              <span className={chipClass()}>Department-scoped reporting</span>
+              <span className={chipClass()}>{pg.chipWeeklyToAnnual}</span>
+              <span className={chipClass()}>{pg.chipCustomWindows}</span>
+              <span className={chipClass()}>{pg.chipExportEmail}</span>
+              <span className={chipClass()}>{pg.chipDeptScoped}</span>
             </div>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-2">
-            <StatCard title="Report definitions" value={stats.definitions} hint="Reusable saved reports" />
-            <StatCard title="Generated runs" value={stats.generated} hint="Stored report outputs" tone="info" />
-            <StatCard title="Email deliveries" value={stats.emailed} hint="Runs emailed successfully" tone="success" />
-            <StatCard title="Auto-email enabled" value={stats.autoEmails} hint="Definitions that send automatically" tone="warning" />
+            <StatCard title={pg.reportDefs} value={stats.definitions} hint={pg.reportDefsLabel} />
+            <StatCard title={pg.generatedRuns} value={stats.generated} hint={pg.generatedRunsLabel} tone="info" />
+            <StatCard title={pg.emailDeliveries} value={stats.emailed} hint={pg.emailDeliveriesLabel} tone="success" />
+            <StatCard title={pg.autoEmail} value={stats.autoEmails} hint={pg.autoEmailLabel} tone="warning" />
           </div>
         </div>
       </section>
 
       <div className="grid gap-6 xl:grid-cols-[1.02fr_0.98fr]">
         <SectionCard
-          title="Create report"
-          subtitle="Default cadences or a custom report window"
+          title={pg.createReport}
+          subtitle={pg.createReportSubtitle}
           className="bg-[var(--background-panel)]"
           actions={
             canManage ? (
@@ -503,62 +509,62 @@ export default function ReportsPage() {
                 disabled={saving}
                 className={primaryButtonClass()}
               >
-                {saving ? "Saving..." : "Create report"}
+                {saving ? t.pages.common.saving : pg.createReport}
               </button>
             ) : null
           }
         >
           {!canManage ? (
             <EmptyState
-              title="Report creation disabled"
-              description="Employees can view report runs, but only managers and above can create or manage report definitions."
+              title={pg.cannotManageTitle}
+              description={pg.cannotManageDesc}
             />
           ) : (
             <div className="grid gap-4">
               <div className="grid gap-4 md:grid-cols-2">
-                <Field label="Report title">
+                <Field label={pg.fieldTitle}>
                   <input
                     value={form.title}
                     onChange={(e) => updateForm("title", e.target.value)}
                     className={inputClass()}
-                    placeholder="Weekly executive report"
+                    placeholder={pg.placeholderTitle}
                   />
                 </Field>
 
-                <Field label="Cadence">
+                <Field label={pg.fieldCadence}>
                   <select
                     value={form.cadence}
                     onChange={(e) => updateForm("cadence", e.target.value)}
                     className={selectClass()}
                   >
-                    <option value="weekly">Weekly</option>
-                    <option value="bi_weekly">Bi-weekly</option>
-                    <option value="monthly">Monthly</option>
-                    <option value="quarterly">Quarterly</option>
-                    <option value="bi_annual">Bi-annual</option>
-                    <option value="annual">Annual</option>
-                    <option value="custom">Custom</option>
+                    <option value="weekly">{pg.cadenceWeekly}</option>
+                    <option value="bi_weekly">{pg.cadenceBiWeekly}</option>
+                    <option value="monthly">{pg.cadenceMonthly}</option>
+                    <option value="quarterly">{pg.cadenceQuarterly}</option>
+                    <option value="bi_annual">{pg.cadenceBiAnnual}</option>
+                    <option value="annual">{pg.cadenceAnnual}</option>
+                    <option value="custom">{pg.cadenceCustom}</option>
                   </select>
                 </Field>
               </div>
 
-              <Field label="Description">
+              <Field label={pg.fieldDescription}>
                 <textarea
                   value={form.description}
                   onChange={(e) => updateForm("description", e.target.value)}
                   className={textareaClass()}
-                  placeholder="What this report is supposed to summarize."
+                  placeholder={pg.placeholderDescription}
                 />
               </Field>
 
               <div className="grid gap-4 md:grid-cols-2">
-                <Field label="Department scope">
+                <Field label={pg.fieldDeptScope}>
                   <select
                     value={form.department_id}
                     onChange={(e) => updateForm("department_id", e.target.value)}
                     className={selectClass()}
                   >
-                    <option value="">All departments</option>
+                    <option value="">{pg.allDepartments}</option>
                     {departments.map((department) => (
                       <option key={department.id} value={department.id}>
                         {department.name}
@@ -567,28 +573,28 @@ export default function ReportsPage() {
                   </select>
                 </Field>
 
-                <Field label="Recipients">
+                <Field label={pg.fieldRecipients}>
                   <input
                     value={form.recipients}
                     onChange={(e) => updateForm("recipients", e.target.value)}
                     className={inputClass()}
-                    placeholder="ceo@company.com, ops@company.com"
+                    placeholder={pg.placeholderRecipients}
                   />
                 </Field>
               </div>
 
               {form.cadence === "custom" ? (
                 <div className="grid gap-4 md:grid-cols-3">
-                  <Field label="Custom label">
+                  <Field label={pg.fieldCustomLabel}>
                     <input
                       value={form.custom_label}
                       onChange={(e) => updateForm("custom_label", e.target.value)}
                       className={inputClass()}
-                      placeholder="Board review"
+                      placeholder={pg.placeholderCustomLabel}
                     />
                   </Field>
 
-                  <Field label="From date">
+                  <Field label={pg.fieldFromDate}>
                     <input
                       type="date"
                       value={form.custom_date_from}
@@ -597,7 +603,7 @@ export default function ReportsPage() {
                     />
                   </Field>
 
-                  <Field label="To date">
+                  <Field label={pg.fieldToDate}>
                     <input
                       type="date"
                       value={form.custom_date_to}
@@ -609,25 +615,25 @@ export default function ReportsPage() {
               ) : null}
 
               <div className="grid gap-3 md:grid-cols-2">
-                <Toggle label="Company summary" checked={form.include_company_summary} onChange={(value) => updateForm("include_company_summary", value)} />
-                <Toggle label="Department breakdown" checked={form.include_department_breakdown} onChange={(value) => updateForm("include_department_breakdown", value)} />
-                <Toggle label="Objectives" checked={form.include_objectives} onChange={(value) => updateForm("include_objectives", value)} />
-                <Toggle label="OKRs" checked={form.include_okrs} onChange={(value) => updateForm("include_okrs", value)} />
-                <Toggle label="KPIs" checked={form.include_kpis} onChange={(value) => updateForm("include_kpis", value)} />
-                <Toggle label="Tasks" checked={form.include_tasks} onChange={(value) => updateForm("include_tasks", value)} />
+                <Toggle label={pg.toggleCompanySummary} checked={form.include_company_summary} onChange={(value) => updateForm("include_company_summary", value)} />
+                <Toggle label={pg.toggleDeptBreakdown} checked={form.include_department_breakdown} onChange={(value) => updateForm("include_department_breakdown", value)} />
+                <Toggle label={pg.toggleObjectives} checked={form.include_objectives} onChange={(value) => updateForm("include_objectives", value)} />
+                <Toggle label={pg.toggleOKRs} checked={form.include_okrs} onChange={(value) => updateForm("include_okrs", value)} />
+                <Toggle label={pg.toggleKPIs} checked={form.include_kpis} onChange={(value) => updateForm("include_kpis", value)} />
+                <Toggle label={pg.toggleTasks} checked={form.include_tasks} onChange={(value) => updateForm("include_tasks", value)} />
               </div>
 
               <div className="grid gap-3 md:grid-cols-2">
-                <Toggle label="Auto-generate immediately" checked={form.auto_generate} onChange={(value) => updateForm("auto_generate", value)} />
-                <Toggle label="Email report after generation" checked={form.auto_email} onChange={(value) => updateForm("auto_email", value)} />
+                <Toggle label={pg.toggleAutoGenerate} checked={form.auto_generate} onChange={(value) => updateForm("auto_generate", value)} />
+                <Toggle label={pg.toggleAutoEmail} checked={form.auto_email} onChange={(value) => updateForm("auto_email", value)} />
               </div>
             </div>
           )}
         </SectionCard>
 
         <SectionCard
-          title="Saved reports"
-          subtitle="Definitions with default or custom generation windows"
+          title={pg.savedReports}
+          subtitle={pg.savedReportsSubtitle}
           className="bg-[var(--background-panel)]"
         >
           {loading ? (
@@ -641,8 +647,8 @@ export default function ReportsPage() {
             </div>
           ) : definitions.length === 0 ? (
             <EmptyState
-              title="No reports yet"
-              description="Create a report definition to start generating, exporting, and emailing reports."
+              title={pg.noReportsTitle}
+              description={pg.noReportsDesc}
             />
           ) : (
             <div className="grid gap-4">
@@ -657,10 +663,10 @@ export default function ReportsPage() {
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <div className="text-lg font-bold text-[var(--foreground)]">{definition.title}</div>
-                          <StatusBadge tone="info">{cadenceLabel(definition.cadence)}</StatusBadge>
-                          {definition.auto_email ? <StatusBadge tone="success">Auto email</StatusBadge> : null}
-                          {definition.auto_generate ? <StatusBadge>Auto generate</StatusBadge> : null}
-                          {definition.department_id ? <StatusBadge tone="warning">Scoped</StatusBadge> : null}
+                          <StatusBadge tone="info">{cadenceLabelT(definition.cadence, pg)}</StatusBadge>
+                          {definition.auto_email ? <StatusBadge tone="success">{pg.badgeAutoEmail}</StatusBadge> : null}
+                          {definition.auto_generate ? <StatusBadge>{pg.badgeAutoGenerate}</StatusBadge> : null}
+                          {definition.department_id ? <StatusBadge tone="warning">{pg.badgeScoped}</StatusBadge> : null}
                         </div>
 
                         {definition.description ? (
@@ -670,9 +676,9 @@ export default function ReportsPage() {
                         ) : null}
 
                         <div className="mt-3 flex flex-wrap gap-2 text-xs text-[var(--foreground-faint)]">
-                          <span>Recipients: {(definition.recipients ?? []).join(", ") || "—"}</span>
+                          <span>{pg.recipientsPrefix} {(definition.recipients ?? []).join(", ") || "—"}</span>
                           <span>•</span>
-                          <span>Last generated: {fmtDate(definition.last_generated_at)}</span>
+                          <span>{pg.lastGeneratedPrefix} {fmtDate(definition.last_generated_at)}</span>
                         </div>
                       </div>
 
@@ -683,7 +689,7 @@ export default function ReportsPage() {
                           disabled={runningId === definition.id}
                           className={secondaryButtonClass()}
                         >
-                          {runningId === definition.id ? "Running..." : "Generate now"}
+                          {runningId === definition.id ? t.pages.common.loading : pg.generateNow}
                         </button>
 
                         <button
@@ -692,7 +698,7 @@ export default function ReportsPage() {
                           disabled={runningId === definition.id}
                           className={secondaryButtonClass()}
                         >
-                          Export JSON
+                          {pg.exportJson}
                         </button>
 
                         <button
@@ -701,7 +707,7 @@ export default function ReportsPage() {
                           disabled={runningId === definition.id}
                           className={secondaryButtonClass()}
                         >
-                          Export CSV
+                          {pg.exportCsv}
                         </button>
 
                         {canManage ? (
@@ -711,7 +717,7 @@ export default function ReportsPage() {
                             disabled={runningId === definition.id}
                             className="inline-flex h-11 items-center justify-center rounded-full border border-red-500/20 bg-red-500/10 px-5 text-sm font-semibold text-red-700 transition hover:bg-red-500/15 disabled:opacity-60 dark:text-red-100"
                           >
-                            Deactivate
+                            {pg.deactivate}
                           </button>
                         ) : null}
                       </div>
@@ -726,12 +732,12 @@ export default function ReportsPage() {
 
                         <div className="mt-3 text-sm text-[var(--foreground-soft)]">{latestRun.period_label}</div>
                         <div className="mt-2 text-xs text-[var(--foreground-faint)]">
-                          Generated {fmtDate(latestRun.generated_at)}
+                          {pg.generatedPrefix} {fmtDate(latestRun.generated_at)}
                         </div>
 
                         {latestRun.email_error ? (
                           <div className="mt-2 text-xs text-red-700 dark:text-red-200">
-                            Email error: {latestRun.email_error}
+                            {pg.emailErrorPrefix} {latestRun.email_error}
                           </div>
                         ) : null}
                       </div>
@@ -746,8 +752,8 @@ export default function ReportsPage() {
 
       <div className="mt-6">
         <SectionCard
-          title="Recent runs"
-          subtitle="Generated outputs, export history, and email delivery state"
+          title={pg.recentRuns}
+          subtitle={pg.recentRunsSubtitle}
           className="bg-[var(--background-panel)]"
         >
           {loading ? (
@@ -761,8 +767,8 @@ export default function ReportsPage() {
             </div>
           ) : runs.length === 0 ? (
             <EmptyState
-              title="No runs generated yet"
-              description="As soon as a report generates, the latest output will appear here."
+              title={pg.noRunsTitle}
+              description={pg.noRunsDesc}
             />
           ) : (
             <div className="grid gap-3">
@@ -799,20 +805,20 @@ export default function ReportsPage() {
                           onClick={() => router.push(`/o/${encodeURIComponent(orgSlug)}/reports/${encodeURIComponent(run.id)}`)}
                           className={primaryButtonClass()}
                         >
-                          View report
+                          {pg.viewReport}
                         </button>
                       </div>
                     </div>
 
                     {(run.emailed_to ?? []).length ? (
                       <div className="mt-3 text-sm text-[var(--foreground-muted)]">
-                        Sent to: {(run.emailed_to ?? []).join(", ")}
+                        {pg.sentToPrefix} {(run.emailed_to ?? []).join(", ")}
                       </div>
                     ) : null}
 
                     {run.email_error ? (
                       <div className="mt-2 text-sm text-red-700 dark:text-red-200">
-                        Email error: {run.email_error}
+                        {pg.emailErrorPrefix} {run.email_error}
                       </div>
                     ) : null}
                   </div>
@@ -844,6 +850,8 @@ function Toggle({
   checked: boolean;
   onChange: (value: boolean) => void;
 }) {
+  const { t } = useLanguage();
+  const pg = t.pages.reports;
   return (
     <button
       type="button"
@@ -858,7 +866,7 @@ function Toggle({
             : "rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--foreground-soft)]"
         }
       >
-        {checked ? "On" : "Off"}
+        {checked ? pg.toggleOn : pg.toggleOff}
       </span>
     </button>
   );

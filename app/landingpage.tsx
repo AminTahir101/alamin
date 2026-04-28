@@ -1,102 +1,19 @@
 "use client";
 
 import Link from "next/link";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
+import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
 
-type Feature = {
-  title: string;
-  desc: string;
-};
-
-type PriceTier = {
-  title: string;
-  price: string;
-  subtitle: string;
-  bullets: string[];
-  cta: string;
-  href: string;
-  highlight?: boolean;
-  badge?: string;
-};
-
-const features: Feature[] = [
-  {
-    title: "KPI to OKR generation",
-    desc: "Turn raw KPI inputs into measurable objectives and key results without manual rewriting.",
-  },
-  {
-    title: "JTBD mapping",
-    desc: "Translate goals into real workstreams and responsibilities instead of disconnected planning docs.",
-  },
-  {
-    title: "AI performance reviews",
-    desc: "Surface execution gaps, blockers, and recommendations from live company data.",
-  },
-  {
-    title: "Department-level ownership",
-    desc: "Give every team clear visibility into what they own, what is slipping, and what needs action.",
-  },
-  {
-    title: "Executive decision layer",
-    desc: "Move from reporting screens to an execution command center with summaries and next actions.",
-  },
-  {
-    title: "Secure multi-tenant setup",
-    desc: "Built around organization isolation, role-based access, and Supabase-ready tenant-safe architecture.",
-  },
-];
-
-const tiers: PriceTier[] = [
-  {
-    title: "Core",
-    price: "35 SAR / seat / month",
-    subtitle:
-      "For companies that need a structured execution system without manual KPI and OKR overhead.",
-    bullets: [
-      "KPI, Objectives, and OKRs",
-      "AI-assisted generation",
-      "Department ownership",
-      "Execution tracking",
-      "Standard dashboards",
-    ],
-    cta: "Request demo",
-    href: "/demo",
-  },
-  {
-    title: "Growth",
-    price: "50 SAR / seat / month",
-    subtitle:
-      "For organizations that need deeper execution intelligence, visibility, and control.",
-    bullets: [
-      "Everything in Core",
-      "Advanced AI recommendations and evaluations",
-      "JTBD mapping and task orchestration",
-      "Cross-department visibility",
-      "Approvals and workflows",
-      "Priority support",
-    ],
-    cta: "Request demo",
-    href: "/demo",
-    highlight: true,
-    badge: "Most popular",
-  },
-  {
-    title: "Enterprise",
-    price: "Custom pricing",
-    subtitle:
-      "For large organizations with rollout, governance, integration, and deployment requirements.",
-    bullets: [
-      "Unlimited scale",
-      "Custom onboarding and rollout",
-      "Advanced permissions and controls",
-      "Dedicated support and SLA",
-      "Custom integrations and deployment",
-    ],
-    cta: "Talk to sales",
-    href: "/demo",
-  },
-];
+const TIER_CONFIG = [
+  { href: "/demo", highlight: false },
+  { href: "/demo", highlight: true },
+  { href: "/demo", highlight: false },
+] as const;
 
 export default function LandingPage() {
+  const { t } = useLanguage();
+  const lp = t.landing;
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="absolute inset-x-0 top-0 -z-10 h-[560px] bg-[radial-gradient(circle_at_top,rgba(109,94,252,0.24),transparent_36%),radial-gradient(circle_at_top_right,rgba(55,207,255,0.14),transparent_28%)]" />
@@ -111,36 +28,35 @@ export default function LandingPage() {
               <div className="text-sm font-semibold tracking-[0.22em] text-[var(--foreground-soft)]">
                 ALAMIN
               </div>
-              <div className="text-sm text-[var(--foreground-muted)]">
-                AI Performance Intelligence
-              </div>
+              <div className="text-sm text-[var(--foreground-muted)]">{t.brand.tagline}</div>
             </div>
           </Link>
 
           <nav className="hidden items-center gap-8 text-sm text-[var(--foreground-muted)] md:flex">
             <a href="#features" className="transition hover:text-[var(--foreground)]">
-              Features
+              {t.nav.features}
             </a>
             <a href="#security" className="transition hover:text-[var(--foreground)]">
-              Security
+              {t.nav.security}
             </a>
             <a href="#pricing" className="transition hover:text-[var(--foreground)]">
-              Pricing
+              {t.nav.pricing}
             </a>
           </nav>
 
           <div className="flex items-center gap-3">
+            <LanguageSwitcher />
             <Link
               href="/auth"
               className="inline-flex h-11 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-5 text-sm font-medium text-[var(--foreground-soft)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
             >
-              Log in
+              {t.nav.login}
             </Link>
             <Link
               href="/demo"
               className="inline-flex h-11 items-center justify-center rounded-full bg-[var(--foreground)] px-5 text-sm font-semibold text-[var(--background)] transition hover:opacity-92"
             >
-              Request demo
+              {t.nav.requestDemo}
             </Link>
           </div>
         </div>
@@ -151,20 +67,18 @@ export default function LandingPage() {
           <div className="max-w-3xl">
             <div className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-xs font-medium text-[var(--foreground-muted)]">
               <span className="h-2 w-2 rounded-full bg-[var(--accent-2)]" />
-              Built for serious teams that need execution clarity, not admin overhead
+              {lp.badge}
             </div>
 
             <h1 className="mt-6 text-5xl font-semibold leading-[1.02] tracking-tight text-[var(--foreground)] md:text-6xl">
-              Turn company strategy into
+              {lp.hero.h1}
               <span className="block bg-[linear-gradient(135deg,var(--foreground)_0%,#9b8cff_38%,#64dcff_100%)] bg-clip-text text-transparent">
-                measurable execution with AI.
+                {lp.hero.h1Gradient}
               </span>
             </h1>
 
             <p className="mt-6 max-w-2xl text-lg leading-8 text-[var(--foreground-muted)]">
-              ALAMIN helps companies define goals, generate measurable OKRs, map Jobs-To-Be-Done,
-              assign real work, and evaluate performance from one workspace instead of spreadsheets,
-              status decks, and scattered follow-ups.
+              {lp.hero.body}
             </p>
 
             <div className="mt-9 flex flex-col gap-4 sm:flex-row">
@@ -172,20 +86,20 @@ export default function LandingPage() {
                 href="/demo"
                 className="inline-flex h-[52px] items-center justify-center rounded-full bg-[var(--foreground)] px-7 text-sm font-semibold text-[var(--background)] transition hover:opacity-92"
               >
-                Request a demo
+                {lp.hero.ctaPrimary}
               </Link>
               <a
                 href="#pricing"
                 className="inline-flex h-[52px] items-center justify-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-7 text-sm font-semibold text-[var(--foreground)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
               >
-                See pricing in SAR
+                {lp.hero.ctaSecondary}
               </a>
             </div>
 
             <div className="mt-10 grid gap-4 sm:grid-cols-3">
-              <MetricChip value="10x" label="less manual planning" />
-              <MetricChip value="1" label="workspace for goals to execution" />
-              <MetricChip value="AI" label="built into every workflow" />
+              {lp.metrics.map((m) => (
+                <MetricChip key={m.value + m.label} value={m.value} label={m.label} />
+              ))}
             </div>
           </div>
 
@@ -196,34 +110,34 @@ export default function LandingPage() {
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <div className="text-xs font-medium uppercase tracking-[0.22em] text-[var(--foreground-faint)]">
-                      AI command preview
+                      {lp.preview.eyebrow}
                     </div>
                     <div className="mt-2 text-lg font-semibold text-[var(--foreground)]">
-                      Execution health is slipping in Sales
+                      {lp.preview.title}
                     </div>
                   </div>
                   <div className="rounded-full border border-amber-400/20 bg-amber-400/12 px-3 py-1 text-xs font-semibold text-amber-300">
-                    At risk
+                    {lp.preview.badge}
                   </div>
                 </div>
 
                 <div className="mt-5 grid gap-4">
                   <PreviewCard
-                    label="Objective"
-                    title="Increase qualified pipeline conversion"
-                    body="AI generated from KPI performance and sales execution inputs."
+                    label={lp.preview.objective.label}
+                    title={lp.preview.objective.title}
+                    body={lp.preview.objective.body}
                   />
 
                   <div className="grid gap-4 md:grid-cols-2">
                     <PreviewCard
-                      label="Key result"
-                      title="Improve MQL to SQL conversion from 18% to 27%"
-                      body="Owner: Head of Sales · Linked to pipeline KPI"
+                      label={lp.preview.keyResult.label}
+                      title={lp.preview.keyResult.title}
+                      body={lp.preview.keyResult.body}
                     />
                     <PreviewCard
-                      label="JTBD cluster"
-                      title="Fix lead qualification handoff"
-                      body="Create shared rules, reduce low-quality lead routing, assign weekly review owner."
+                      label={lp.preview.jtbd.label}
+                      title={lp.preview.jtbd.title}
+                      body={lp.preview.jtbd.body}
                     />
                   </div>
 
@@ -231,15 +145,14 @@ export default function LandingPage() {
                     <div className="flex items-center justify-between gap-4">
                       <div>
                         <div className="text-xs font-medium uppercase tracking-[0.18em] text-[var(--foreground-faint)]">
-                          Next actions
+                          {lp.preview.nextActions.eyebrow}
                         </div>
                         <div className="mt-2 text-sm text-[var(--foreground-muted)]">
-                          Generate tasks, assign owners, and publish the action plan to the Sales
-                          department.
+                          {lp.preview.nextActions.body}
                         </div>
                       </div>
                       <div className="inline-flex h-10 items-center justify-center rounded-full bg-[var(--foreground)] px-4 text-sm font-semibold text-[var(--background)]">
-                        Review
+                        {lp.preview.nextActions.cta}
                       </div>
                     </div>
                   </div>
@@ -251,37 +164,27 @@ export default function LandingPage() {
 
         <section className="mx-auto max-w-7xl px-6 py-8 lg:px-8">
           <div className="grid gap-4 md:grid-cols-3">
-            <ValueCard
-              title="From KPI input to action"
-              desc="Capture performance signals once, then let the product generate the strategic and operational structure around them."
-            />
-            <ValueCard
-              title="Made for leadership and teams"
-              desc="Executives get decision clarity. Departments get ownership, priorities, and execution visibility."
-            />
-            <ValueCard
-              title="No spreadsheet theater"
-              desc="Replace fragmented planning decks, manual OKR rewrites, and scattered follow-up work with one execution layer."
-            />
+            {lp.valueCards.map((vc) => (
+              <ValueCard key={vc.title} title={vc.title} desc={vc.desc} />
+            ))}
           </div>
         </section>
 
         <section id="features" className="mx-auto max-w-7xl px-6 py-[72px] lg:px-8">
           <div className="max-w-2xl">
             <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--foreground-faint)]">
-              Features
+              {lp.features.eyebrow}
             </div>
             <h2 className="mt-3 text-3xl font-semibold tracking-tight text-[var(--foreground)] md:text-4xl">
-              Built to connect strategy, execution, and evaluation.
+              {lp.features.heading}
             </h2>
             <p className="mt-4 text-base leading-7 text-[var(--foreground-muted)]">
-              ALAMIN is not another reporting dashboard. It is the layer that connects KPI
-              signals, strategic goals, work ownership, and AI recommendations in one product.
+              {lp.features.body}
             </p>
           </div>
 
           <div className="mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {features.map((feature) => (
+            {lp.features.items.map((feature) => (
               <FeatureCard key={feature.title} title={feature.title} desc={feature.desc} />
             ))}
           </div>
@@ -292,31 +195,20 @@ export default function LandingPage() {
             <div className="grid gap-8 md:grid-cols-[1.15fr_0.85fr] md:items-center">
               <div>
                 <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--foreground-faint)]">
-                  Security
+                  {lp.security.eyebrow}
                 </div>
                 <h2 className="mt-3 text-3xl font-semibold tracking-tight text-[var(--foreground)]">
-                  Built for serious B2B use.
+                  {lp.security.heading}
                 </h2>
                 <p className="mt-4 max-w-2xl text-base leading-7 text-[var(--foreground-muted)]">
-                  Tenant isolation, role-ready access control, Supabase RLS compatibility, and a
-                  structure designed for organization-safe data access. Keep service role keys on
-                  the server where they belong. Not in the browser. Not in client code.
+                  {lp.security.body}
                 </p>
               </div>
 
               <div className="grid gap-3">
-                <SecurityItem
-                  title="Tenant-safe architecture"
-                  desc="Separate organizations, scoped data, predictable routing."
-                />
-                <SecurityItem
-                  title="Role-ready permissions"
-                  desc="Support owner, admin, manager, department, and employee visibility."
-                />
-                <SecurityItem
-                  title="Server-side secrets only"
-                  desc="Sensitive keys stay out of client bundles and browser sessions."
-                />
+                {lp.security.items.map((item) => (
+                  <SecurityItem key={item.title} title={item.title} desc={item.desc} />
+                ))}
               </div>
             </div>
           </div>
@@ -325,25 +217,34 @@ export default function LandingPage() {
         <section id="pricing" className="mx-auto max-w-7xl px-6 pb-[88px] pt-[72px] lg:px-8">
           <div className="max-w-3xl">
             <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--foreground-faint)]">
-              Pricing
+              {lp.pricing.eyebrow}
             </div>
             <h2 className="mt-3 text-3xl font-semibold tracking-tight text-[var(--foreground)] md:text-4xl">
-              Our pricing Plans.
+              {lp.pricing.heading}
             </h2>
             <p className="mt-4 text-base leading-7 text-[var(--foreground-muted)]">
-              Pricing is seat-based.
-              
+              {lp.pricing.body}
             </p>
           </div>
 
           <div className="mt-10 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-            {tiers.map((tier) => (
-              <PriceCard key={tier.title} {...tier} />
+            {lp.pricing.tiers.map((tier, i) => (
+              <PriceCard
+                key={tier.title}
+                title={tier.title}
+                price={tier.price}
+                subtitle={tier.subtitle}
+                bullets={[...tier.bullets]}
+                cta={tier.cta}
+                href={TIER_CONFIG[i].href}
+                highlight={TIER_CONFIG[i].highlight}
+                badge={tier.badge}
+              />
             ))}
           </div>
 
           <div className="mt-8 rounded-[22px] border border-[var(--border)] bg-[var(--button-secondary-bg)] p-5 text-sm text-[var(--foreground-muted)]">
-            You can request a demo at any time, and our team will make sure to reach out.
+            {lp.pricing.note}
           </div>
         </section>
 
@@ -352,29 +253,28 @@ export default function LandingPage() {
             <div className="grid gap-6 md:grid-cols-[1.1fr_0.9fr] md:items-center">
               <div>
                 <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--foreground-faint)]">
-                  Request a demo
+                  {lp.demo.eyebrow}
                 </div>
                 <h2 className="mt-3 text-3xl font-semibold tracking-tight text-[var(--foreground)] md:text-4xl">
-                  See how ALAMIN fits your company before rollout.
+                  {lp.demo.heading}
                 </h2>
                 <p className="mt-4 max-w-2xl text-base leading-7 text-[var(--foreground-muted)]">
-                  Book a demo to walk through your KPI structure, execution model, reporting needs,
-                  and rollout scope. This is the entry point for new customers.
+                  {lp.demo.body}
                 </p>
               </div>
 
               <div className="flex flex-col gap-3 sm:flex-row md:justify-end">
                 <Link
-                  href="app/demo/page.tsx"
+                  href="/demo"
                   className="inline-flex h-12 items-center justify-center rounded-full bg-[var(--foreground)] px-6 text-sm font-semibold text-[var(--background)] transition hover:opacity-92"
                 >
-                  Request demo
+                  {lp.demo.ctaPrimary}
                 </Link>
                 <Link
                   href="/auth"
                   className="inline-flex h-12 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-6 text-sm font-semibold text-[var(--foreground)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
                 >
-                  Existing customer login
+                  {lp.demo.ctaSecondary}
                 </Link>
               </div>
             </div>
@@ -383,16 +283,18 @@ export default function LandingPage() {
 
         <footer className="border-t border-[var(--border)] py-10">
           <div className="mx-auto flex max-w-7xl flex-col gap-3 px-6 text-sm text-[var(--foreground-muted)] md:flex-row md:items-center md:justify-between lg:px-8">
-            <div>© {new Date().getFullYear()} ALAMIN. AI Performance Intelligence.</div>
+            <div>
+              © {new Date().getFullYear()} {lp.footer.copyrightBrand}
+            </div>
             <div className="flex gap-5">
               <Link href="/auth" className="transition hover:text-[var(--foreground)]">
-                Login
+                {lp.footer.links.login}
               </Link>
               <Link href="/demo" className="transition hover:text-[var(--foreground)]">
-                Request demo
+                {lp.footer.links.requestDemo}
               </Link>
               <a href="#pricing" className="transition hover:text-[var(--foreground)]">
-                Pricing
+                {lp.footer.links.pricing}
               </a>
             </div>
           </div>
@@ -405,9 +307,7 @@ export default function LandingPage() {
 function MetricChip({ value, label }: { value: string; label: string }) {
   return (
     <div className="rounded-[22px] border border-[var(--border)] bg-[var(--card)] px-5 py-4 alamin-shadow">
-      <div className="text-2xl font-semibold tracking-tight text-[var(--foreground)]">
-        {value}
-      </div>
+      <div className="text-2xl font-semibold tracking-tight text-[var(--foreground)]">{value}</div>
       <div className="mt-1 text-sm text-[var(--foreground-muted)]">{label}</div>
     </div>
   );
@@ -422,15 +322,7 @@ function ValueCard({ title, desc }: { title: string; desc: string }) {
   );
 }
 
-function PreviewCard({
-  label,
-  title,
-  body,
-}: {
-  label: string;
-  title: string;
-  body: string;
-}) {
+function PreviewCard({ label, title, body }: { label: string; title: string; body: string }) {
   return (
     <div className="rounded-[20px] border border-[var(--border)] bg-[var(--card-subtle)] p-4">
       <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--foreground-faint)]">
@@ -442,7 +334,7 @@ function PreviewCard({
   );
 }
 
-function FeatureCard({ title, desc }: Feature) {
+function FeatureCard({ title, desc }: { title: string; desc: string }) {
   return (
     <div className="rounded-[24px] border border-[var(--border)] bg-[var(--card)] p-6 alamin-card-hover">
       <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--button-secondary-bg)]">
@@ -491,7 +383,16 @@ function PriceCard({
   href,
   highlight,
   badge,
-}: PriceTier) {
+}: {
+  title: string;
+  price: string;
+  subtitle: string;
+  bullets: string[];
+  cta: string;
+  href: string;
+  highlight?: boolean;
+  badge?: string;
+}) {
   return (
     <div
       className={[

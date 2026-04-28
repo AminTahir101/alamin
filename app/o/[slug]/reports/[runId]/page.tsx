@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { AppPageHeader, AppShell } from "@/components/app/AppShell";
 import SectionCard from "@/components/ui/SectionCard";
 import StatusBadge from "@/components/ui/StatusBadge";
@@ -221,11 +222,20 @@ function riskTone(level: string): "danger" | "warning" | "success" | "info" | "n
   return "neutral";
 }
 
-function cadenceLabel(cadence: string) {
+function cadenceLabelT(
+  cadence: string,
+  pg: {
+    cadenceWeekly: string; cadenceBiWeekly: string; cadenceMonthly: string;
+    cadenceQuarterly: string; cadenceBiAnnual: string; cadenceAnnual: string; cadenceCustom: string;
+  },
+) {
   if (!cadence) return "";
-  if (cadence === "bi_weekly") return "Bi-weekly";
-  if (cadence === "bi_annual") return "Bi-annual";
-  return cadence.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const map: Record<string, string> = {
+    weekly: pg.cadenceWeekly, bi_weekly: pg.cadenceBiWeekly, monthly: pg.cadenceMonthly,
+    quarterly: pg.cadenceQuarterly, bi_annual: pg.cadenceBiAnnual, annual: pg.cadenceAnnual,
+    custom: pg.cadenceCustom,
+  };
+  return map[cadence] ?? cadence.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -237,6 +247,8 @@ export default function ReportDetailPage() {
   const router = useRouter();
   const slug = String(params?.slug ?? "").trim();
   const runId = String(params?.runId ?? "").trim();
+  const { t } = useLanguage();
+  const pg = t.pages.reports;
 
   const [loading, setLoading] = useState(true);
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
@@ -571,8 +583,8 @@ export default function ReportDetailPage() {
     return (
       <AppShell slug={slug} sessionEmail={sessionEmail}>
         <AppPageHeader
-          title="Loading report"
-          description="Reading the report payload and preparing your dashboard."
+          title={pg.loadingTitle}
+          description={pg.loadingDesc}
         />
         <div className="mt-6 grid gap-4">
           <div className="h-[420px] animate-pulse rounded-[28px] border border-[var(--border)] bg-[var(--card)]" />
@@ -591,13 +603,13 @@ export default function ReportDetailPage() {
     return (
       <AppShell slug={slug} sessionEmail={sessionEmail}>
         <AppPageHeader
-          title="Report not available"
-          description="We couldn't load this report."
+          title={pg.notAvailableTitle}
+          description={pg.notAvailableDesc}
         />
         <div className="mt-6">
-          <SectionCard title="Something went wrong">
+          <SectionCard title={pg.errorSectionTitle}>
             <EmptyState
-              title="Report not found"
+              title={pg.notFoundTitle}
               description={
                 msg ?? "This report run may have been deleted or you don't have access."
               }
@@ -608,7 +620,7 @@ export default function ReportDetailPage() {
                 onClick={() => router.push(`/o/${slug}/reports`)}
                 className="inline-flex h-11 items-center justify-center rounded-full bg-[var(--foreground)] px-5 text-sm font-semibold text-[var(--background)] transition hover:opacity-90"
               >
-                Back to reports
+                {pg.backToReports}
               </button>
             </div>
           </SectionCard>
@@ -649,23 +661,26 @@ export default function ReportDetailPage() {
 
   // Task breakdown donut data
   const taskDonut: DonutSegment[] = [
-    { label: "Completed", value: summary.completed_tasks ?? 0, color: "#10b981" },
+    { label: pg.taskCompleted, value: summary.completed_tasks ?? 0, color: "#10b981" },
     {
-      label: "Open",
+      label: pg.taskOpen,
       value: Math.max(
         0,
         (summary.open_tasks ?? 0) - (summary.overdue_tasks ?? 0),
       ),
       color: "#3b82f6",
     },
-    { label: "Overdue", value: summary.overdue_tasks ?? 0, color: "#ef4444" },
+    { label: pg.taskOverdue, value: summary.overdue_tasks ?? 0, color: "#ef4444" },
   ];
 
   // Department ranking rows
   const departmentBarRows: HorizontalBarRow[] = rankedDepartments.map((dept) => ({
     label: dept.name,
     value: dept.score,
-    subtext: `${dept.kpis} KPIs • ${dept.objectives} objectives • ${dept.overdue_tasks} overdue`,
+    subtext: pg.deptBarSubtext
+      .replace("{kpis}", String(dept.kpis))
+      .replace("{objectives}", String(dept.objectives))
+      .replace("{overdue}", String(dept.overdue_tasks)),
   }));
 
   const immediateActions = recommendations.immediate ?? [];
@@ -676,7 +691,9 @@ export default function ReportDetailPage() {
         title={definition?.title ?? "Report"}
         description={
           definition?.description ||
-          `${cadenceLabel(definition?.cadence ?? "")} report · ${run.period_label}`
+          pg.reportDescFallback
+              .replace("{cadence}", cadenceLabelT(definition?.cadence ?? "", pg))
+              .replace("{period}", run.period_label)
         }
         actions={
           <div className="flex flex-wrap gap-2">
@@ -685,7 +702,7 @@ export default function ReportDetailPage() {
               onClick={() => router.push(`/o/${slug}/reports`)}
               className="inline-flex h-11 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-5 text-sm font-semibold text-[var(--foreground)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)]"
             >
-              Back
+              {t.pages.common.back}
             </button>
             <button
               type="button"
@@ -693,7 +710,7 @@ export default function ReportDetailPage() {
               disabled={exporting || !definition}
               className="inline-flex h-11 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--button-secondary-bg)] px-5 text-sm font-semibold text-[var(--foreground)] transition hover:border-[var(--border-strong)] hover:bg-[var(--button-secondary-hover)] disabled:opacity-60"
             >
-              {exporting ? "Exporting…" : "Download CSV"}
+              {exporting ? pg.exportingCsv : pg.downloadCsv}
             </button>
             <button
               type="button"
@@ -701,7 +718,7 @@ export default function ReportDetailPage() {
               disabled={pdfBusy}
               className="inline-flex h-11 items-center justify-center rounded-full bg-[var(--foreground)] px-5 text-sm font-semibold text-[var(--background)] transition hover:opacity-90 disabled:opacity-60"
             >
-              {pdfBusy ? "Preparing PDF…" : "Download PDF"}
+              {pdfBusy ? pg.preparingPdf : pg.downloadPdf}
             </button>
           </div>
         }
@@ -718,8 +735,8 @@ export default function ReportDetailPage() {
         {/* HERO — Enterprise score with radial gauge                     */}
         {/* ───────────────────────────────────────────────────────────── */}
         <SectionCard
-          title="Enterprise performance"
-          subtitle="Overall health across strategy, KPIs, and execution"
+          title={pg.enterpriseTitle}
+          subtitle={pg.enterpriseSubtitle}
           className="bg-[var(--background-panel)]"
         >
           <div className="grid gap-8 lg:grid-cols-[auto_1fr] lg:items-center">
@@ -733,24 +750,24 @@ export default function ReportDetailPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <ScoreCard
-                label="Strategic execution"
+                label={pg.scoreStrategicExecution}
                 value={summary.strategic_execution_score}
-                hint="Strategy aligned with delivery"
+                hint={pg.scoreStrategicHint}
               />
               <ScoreCard
-                label="KPI health"
+                label={pg.scoreKpiHealth}
                 value={summary.kpi_health_score}
-                hint="Against targets"
+                hint={pg.scoreKpiHint}
               />
               <ScoreCard
-                label="Task execution"
+                label={pg.scoreTaskExec}
                 value={summary.task_execution_score}
-                hint="Completion velocity"
+                hint={pg.scoreTaskHint}
               />
               <ScoreCard
-                label="Overdue tasks"
+                label={pg.scoreOverdue}
                 value={summary.overdue_tasks ?? 0}
-                hint="Immediate intervention"
+                hint={pg.scoreOverdueHint}
                 raw
                 inverseBand
               />
@@ -759,14 +776,14 @@ export default function ReportDetailPage() {
 
           <div className="mt-8 grid gap-3 sm:grid-cols-2 md:grid-cols-4">
             <MiniStat
-              label="Objectives"
+              label={pg.miniObjectives}
               value={summary.objectives ?? 0}
               tone="neutral"
             />
-            <MiniStat label="OKRs" value={summary.okrs ?? 0} tone="neutral" />
-            <MiniStat label="KPIs" value={summary.kpis ?? 0} tone="neutral" />
+            <MiniStat label={pg.miniOkrs} value={summary.okrs ?? 0} tone="neutral" />
+            <MiniStat label={pg.miniKpis} value={summary.kpis ?? 0} tone="neutral" />
             <MiniStat
-              label="Departments"
+              label={pg.miniDepartments}
               value={departments.length}
               tone="neutral"
             />
@@ -778,18 +795,18 @@ export default function ReportDetailPage() {
         {/* ───────────────────────────────────────────────────────────── */}
         <div className="grid gap-4 lg:grid-cols-2">
           <NarrativeCard
-            label="Board view"
-            title="What the board sees"
-            body={board.narrative ?? "No board-level narrative generated yet."}
+            label={pg.boardViewLabel}
+            title={pg.boardViewTitle}
+            body={board.narrative ?? pg.boardNoNarrative}
             tags={board.top_risks?.slice(0, 3)}
-            tagsLabel="Top risks"
+            tagsLabel={pg.topRisks}
           />
           <NarrativeCard
-            label="CEO view"
-            title="Where the CEO focuses"
-            body={ceo.narrative ?? "No CEO-level narrative generated yet."}
+            label={pg.ceoViewLabel}
+            title={pg.ceoViewTitle}
+            body={ceo.narrative ?? pg.ceoNoNarrative}
             tags={ceo.focus_areas?.slice(0, 3)}
-            tagsLabel="Focus areas"
+            tagsLabel={pg.focusAreas}
           />
         </div>
 
@@ -797,14 +814,14 @@ export default function ReportDetailPage() {
         {/* DEPARTMENT PERFORMANCE — Horizontal bar ranking + detail grid */}
         {/* ───────────────────────────────────────────────────────────── */}
         <SectionCard
-          title="Department performance"
-          subtitle="Ranked by overall score"
+          title={pg.deptPerfTitle}
+          subtitle={pg.deptPerfSubtitle}
           className="bg-[var(--background-panel)]"
         >
           {rankedDepartments.length === 0 ? (
             <EmptyState
-              title="No department data"
-              description="Add departments and assign KPIs, OKRs, or tasks to see breakdown."
+              title={pg.noDeptDataTitle}
+              description={pg.noDeptDataDesc}
             />
           ) : (
             <>
@@ -823,14 +840,14 @@ export default function ReportDetailPage() {
         {/* KPIs AT RISK                                                   */}
         {/* ───────────────────────────────────────────────────────────── */}
         <SectionCard
-          title="KPIs at risk"
-          subtitle="Lowest-scoring metrics that need attention"
+          title={pg.kpisAtRiskTitle}
+          subtitle={pg.kpisAtRiskSubtitle}
           className="bg-[var(--background-panel)]"
         >
           {kpisAtRisk.length === 0 ? (
             <EmptyState
-              title="No KPIs tracked"
-              description="Add KPIs and start recording values to see performance data."
+              title={pg.noKpisTitle}
+              description={pg.noKpisDesc}
             />
           ) : (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -845,14 +862,14 @@ export default function ReportDetailPage() {
         {/* STRATEGY OVERVIEW — Objectives + OKRs progress                 */}
         {/* ───────────────────────────────────────────────────────────── */}
         <SectionCard
-          title="Strategy overview"
-          subtitle="Objectives and their key results in progress"
+          title={pg.strategyTitle}
+          subtitle={pg.strategySubtitle}
           className="bg-[var(--background-panel)]"
         >
           {rankedObjectives.length === 0 && rankedOkrs.length === 0 ? (
             <EmptyState
-              title="No objectives or OKRs tracked"
-              description="Add objectives and OKRs to see strategy execution progress."
+              title={pg.noStrategyTitle}
+              description={pg.noStrategyDesc}
             />
           ) : (
             <div className="grid gap-8 xl:grid-cols-[1.1fr_0.9fr]">
@@ -860,16 +877,16 @@ export default function ReportDetailPage() {
               <div>
                 <div className="mb-4 flex items-baseline justify-between">
                   <div className="text-sm font-bold text-[var(--foreground)]">
-                    Objectives
+                    {pg.objectivesHeader}
                   </div>
                   <div className="text-xs text-[var(--foreground-muted)]">
-                    {rankedObjectives.length} total
+                    {rankedObjectives.length} {pg.totalSuffix}
                   </div>
                 </div>
 
                 {rankedObjectives.length === 0 ? (
                   <div className="rounded-[18px] border border-[var(--border)] bg-[var(--card)] p-8 text-center text-sm text-[var(--foreground-muted)]">
-                    No objectives tracked in this period.
+                    {pg.noObjectivesText}
                   </div>
                 ) : (
                   <div className="grid gap-3">
@@ -878,7 +895,7 @@ export default function ReportDetailPage() {
                     ))}
                     {rankedObjectives.length > 8 ? (
                       <div className="mt-1 text-center text-xs text-[var(--foreground-muted)]">
-                        + {rankedObjectives.length - 8} more objectives
+                        {pg.moreObjectives.replace("{count}", String(rankedObjectives.length - 8))}
                       </div>
                     ) : null}
                   </div>
@@ -889,16 +906,16 @@ export default function ReportDetailPage() {
               <div>
                 <div className="mb-4 flex items-baseline justify-between">
                   <div className="text-sm font-bold text-[var(--foreground)]">
-                    Key results
+                    {pg.keyResultsHeader}
                   </div>
                   <div className="text-xs text-[var(--foreground-muted)]">
-                    {rankedOkrs.length} total
+                    {rankedOkrs.length} {pg.totalSuffix}
                   </div>
                 </div>
 
                 {rankedOkrs.length === 0 ? (
                   <div className="rounded-[18px] border border-[var(--border)] bg-[var(--card)] p-8 text-center text-sm text-[var(--foreground-muted)]">
-                    No key results tracked in this period.
+                    {pg.noKeyResultsText}
                   </div>
                 ) : (
                   <div className="grid gap-2">
@@ -907,7 +924,7 @@ export default function ReportDetailPage() {
                     ))}
                     {rankedOkrs.length > 8 ? (
                       <div className="mt-1 text-center text-xs text-[var(--foreground-muted)]">
-                        + {rankedOkrs.length - 8} more key results
+                        {pg.moreKeyResults.replace("{count}", String(rankedOkrs.length - 8))}
                       </div>
                     ) : null}
                   </div>
@@ -920,15 +937,15 @@ export default function ReportDetailPage() {
           {(rankedObjectives.length > 0 || rankedOkrs.length > 0) ? (
             <div className="mt-8 grid gap-3 border-t border-[var(--border)] pt-6 sm:grid-cols-3">
               <StrategyHealthStat
-                label="Objective health"
+                label={pg.strategyObjHealth}
                 value={summary.objective_health_score ?? 0}
               />
               <StrategyHealthStat
-                label="OKR health"
+                label={pg.strategyOkrHealth}
                 value={summary.okr_health_score ?? 0}
               />
               <StrategyHealthStat
-                label="Strategic execution"
+                label={pg.strategyExecution}
                 value={summary.strategic_execution_score ?? 0}
               />
             </div>
@@ -939,8 +956,8 @@ export default function ReportDetailPage() {
         {/* TASK BREAKDOWN — Donut chart                                   */}
         {/* ───────────────────────────────────────────────────────────── */}
         <SectionCard
-          title="Task execution breakdown"
-          subtitle="Completion vs open vs overdue across the workspace"
+          title={pg.taskBreakdownTitle}
+          subtitle={pg.taskBreakdownSubtitle}
           className="bg-[var(--background-panel)]"
         >
           <div className="grid items-center gap-8 md:grid-cols-[auto_1fr]">
@@ -953,34 +970,34 @@ export default function ReportDetailPage() {
                     (summary.open_tasks ?? 0) +
                     (summary.overdue_tasks ?? 0),
                 )}
-                centerSublabel="Total tasks"
+                centerSublabel={pg.totalTasksSublabel}
               />
             </div>
             <div className="grid gap-3">
               <TaskStatRow
-                label="Completion rate"
+                label={pg.taskCompletionRate}
                 value={`${Math.round(summary.task_completion_rate ?? 0)}%`}
-                description="Of all tasks in the period, how many were completed."
+                description={pg.taskCompletionRateDesc}
               />
               <TaskStatRow
-                label="Completed"
+                label={pg.taskCompleted}
                 value={String(summary.completed_tasks ?? 0)}
-                description="Closed out successfully."
+                description={pg.taskCompletedDesc}
               />
               <TaskStatRow
-                label="Open"
+                label={pg.taskOpen}
                 value={String(
                   Math.max(
                     0,
                     (summary.open_tasks ?? 0) - (summary.overdue_tasks ?? 0),
                   ),
                 )}
-                description="In progress, not yet late."
+                description={pg.taskOpenDesc}
               />
               <TaskStatRow
-                label="Overdue"
+                label={pg.taskOverdue}
                 value={String(summary.overdue_tasks ?? 0)}
-                description="Past due date and not done."
+                description={pg.taskOverdueDesc}
                 warn
               />
             </div>
@@ -991,14 +1008,14 @@ export default function ReportDetailPage() {
         {/* IMMEDIATE ACTIONS                                              */}
         {/* ───────────────────────────────────────────────────────────── */}
         <SectionCard
-          title="Immediate executive actions"
-          subtitle="AI-generated recommendations based on this period's performance"
+          title={pg.immediateActionsTitle}
+          subtitle={pg.immediateActionsSubtitle}
           className="bg-[var(--background-panel)]"
         >
           {immediateActions.length === 0 ? (
             <EmptyState
-              title="No immediate actions"
-              description="Nothing urgent flagged for this period."
+              title={pg.noActionsTitle}
+              description={pg.noActionsDesc}
             />
           ) : (
             <ul className="grid gap-3">
@@ -1023,13 +1040,13 @@ export default function ReportDetailPage() {
             <div className="mt-6 grid gap-4 md:grid-cols-2">
               {(recommendations.thirty_day ?? []).length > 0 ? (
                 <RecommendationGroup
-                  title="30-day plan"
+                  title={pg.thirtyDayPlan}
                   items={recommendations.thirty_day ?? []}
                 />
               ) : null}
               {(recommendations.ninety_day ?? []).length > 0 ? (
                 <RecommendationGroup
-                  title="90-day plan"
+                  title={pg.ninetyDayPlan}
                   items={recommendations.ninety_day ?? []}
                 />
               ) : null}
@@ -1043,16 +1060,16 @@ export default function ReportDetailPage() {
         <div className="rounded-[20px] border border-[var(--border)] bg-[var(--card)] p-5">
           <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-[var(--foreground-muted)]">
             <div>
-              Generated {fmtDate(run.generated_at)}
+              {pg.generatedPrefix} {fmtDate(run.generated_at)}
               {org ? ` · ${org.name}` : ""}
             </div>
             <div className="flex flex-wrap gap-2">
               <StatusBadge tone="info">{run.status}</StatusBadge>
               <StatusBadge tone="neutral">
-                {cadenceLabel(definition?.cadence ?? "")}
+                {cadenceLabelT(definition?.cadence ?? "", pg)}
               </StatusBadge>
               {run.email_status && run.email_status !== "pending" ? (
-                <StatusBadge tone="success">Emailed</StatusBadge>
+                <StatusBadge tone="success">{pg.emailedBadge}</StatusBadge>
               ) : null}
             </div>
           </div>
@@ -1173,6 +1190,8 @@ function NarrativeCard({
 }
 
 function DepartmentCard({ dept }: { dept: DepartmentRow }) {
+  const { t } = useLanguage();
+  const pg = t.pages.reports;
   const color = scoreToBandColor(dept.score);
   return (
     <div
@@ -1192,7 +1211,7 @@ function DepartmentCard({ dept }: { dept: DepartmentRow }) {
               {dept.label}
             </StatusBadge>
             <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--foreground-muted)]">
-              Risk: {dept.risk_level}
+              {pg.riskPrefix} {dept.risk_level}
             </span>
           </div>
         </div>
@@ -1201,7 +1220,7 @@ function DepartmentCard({ dept }: { dept: DepartmentRow }) {
             {Math.round(dept.score)}
           </div>
           <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--foreground-muted)]">
-            Score
+            {t.pages.common.score}
           </div>
         </div>
       </div>
@@ -1213,18 +1232,18 @@ function DepartmentCard({ dept }: { dept: DepartmentRow }) {
       ) : null}
 
       <div className="mt-4 grid grid-cols-4 gap-2 border-t border-[var(--border)] pt-4">
-        <SubMetric label="KPIs" value={Math.round(dept.kpi_score)} suffix="/100" />
+        <SubMetric label={pg.subKpis} value={Math.round(dept.kpi_score)} suffix="/100" />
         <SubMetric
-          label="OKRs"
+          label={pg.subOkrs}
           value={Math.round(dept.okr_health)}
           suffix="/100"
         />
         <SubMetric
-          label="Exec"
+          label={pg.subExec}
           value={Math.round(dept.execution_score)}
           suffix="/100"
         />
-        <SubMetric label="Overdue" value={dept.overdue_tasks} warn={dept.overdue_tasks > 0} />
+        <SubMetric label={pg.subOverdue} value={dept.overdue_tasks} warn={dept.overdue_tasks > 0} />
       </div>
     </div>
   );
@@ -1264,6 +1283,7 @@ function SubMetric({
 }
 
 function KpiCard({ kpi }: { kpi: KpiItem }) {
+  const { t } = useLanguage();
   const color = scoreToBandColor(kpi.score);
   const current = kpi.current_value ?? null;
   const target = kpi.target_value ?? null;
@@ -1298,7 +1318,7 @@ function KpiCard({ kpi }: { kpi: KpiItem }) {
       <div className="mt-4 space-y-2">
         <div className="flex items-baseline justify-between">
           <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--foreground-muted)]">
-            Current
+            {t.pages.common.current}
           </span>
           <span className="text-sm font-bold text-[var(--foreground)]">
             {current !== null ? current : "—"}
@@ -1306,7 +1326,7 @@ function KpiCard({ kpi }: { kpi: KpiItem }) {
         </div>
         <div className="flex items-baseline justify-between">
           <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--foreground-muted)]">
-            Target
+            {t.pages.common.target}
           </span>
           <span className="text-sm font-bold text-[var(--foreground)]">
             {target !== null ? target : "—"}
@@ -1401,6 +1421,18 @@ function ObjectiveRow({
     avg_okr_progress: number | null;
   };
 }) {
+  const { t } = useLanguage();
+  const c = t.pages.common;
+  const lsStatus = (status: string): string => {
+    const lower = String(status ?? "").toLowerCase().replace(/-/g, "_");
+    const map: Record<string, string> = {
+      done: c.completed, completed: c.completed, achieved: c.completed,
+      on_track: c.onTrack, in_progress: c.inProgress, active: c.active,
+      at_risk: c.atRisk, behind: c.atRisk,
+      blocked: c.blocked, off_track: c.offTrack, cancelled: c.cancelled,
+    };
+    return map[lower] ?? status.replace(/_/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase());
+  };
   const progress = Math.max(0, Math.min(100, Math.round(obj.progress ?? 0)));
   const healthColor = scoreToBandColor(obj.health_score ?? 0);
 
@@ -1421,7 +1453,7 @@ function ObjectiveRow({
               </span>
             ) : null}
             <StatusBadge tone={objectiveStatusTone(obj.status)}>
-              {formatStatus(obj.status)}
+              {lsStatus(obj.status)}
             </StatusBadge>
             {obj.linked_okrs_count > 0 ? (
               <span className="rounded-full border border-[var(--border)] bg-[var(--card-subtle)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--foreground-soft)]">
